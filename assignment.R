@@ -1,84 +1,106 @@
-#Authors: Basadonna, Gutjahr, Kampe
+#A uthors: Basadonna, Gutjahr, Kampe
+# ----------------------------------------
+# Financial Volatility - Group Assignment
+# University of St. Gallen | Spring Semester 2022
+# Clara Elisa Basadonna | 21-607-395
+# Jan Gutjahr | 21-607-544
+# Niklas Leander Kampe | 16-611-618
+# ----------------------------------------
 
-# 1 Libraries and Data Preparation ----------------------------------------
+# 1 Libraries & Data Preparation ----------------------------------------
 
-#check what the wd is set to (should be the directory where the data is saved)
-getwd()
-
-#load packages needed for analysis
-library(fBasics) #Load the package fBasics
+# Load packages
+library(fBasics)
 library(zoo)
-library(fGarch) #Load the package for ARCH/GARCH estimation
+library(fGarch)
 library(tseries)
-library(car) #consistent standard errors
+library(car)
 library(systemfit)
 library(mvtnorm)
 library(quadprog)
 library(VGAM)
 library(sandwich)
 library(magrittr)
+library(tidyverse)
+library(ggplot2)
 
-#load data and transform to numeric
+# Working directory
+getwd()
+setwd("~/Documents/GitHub/Financial_Volatility")
+
+# Import data set and numeric transformation
 xtrackers_msci <- read.csv(as.matrix("XDWD.DE.csv")) %>%
   mutate_at(vars(Date),as.Date) %>%
   mutate_at(vars(Open, High, Low, Close, Adj.Close, Volume),as.numeric)
 
-xtrackers_msci[is.na(xtrackers_msci[,2]),] #I'm not exactly sure what the issue with these two dates is, let's think about this
+# Check of NA values
+xtrackers_msci[is.na(xtrackers_msci[,2]),]
 
-#check the data quality and eliminate the NAs
+# Check column classes and omit NA values
 str(xtrackers_msci)
-xtrackers_msci %<>% na.omit() #omit the two NA days where all our values are NA
+xtrackers_msci %<>% na.omit()
 
-#transform the closing prices to obtain log returns
-xtrackers_msci[,8] <- 0
+# Calculate log returns from closing prices
+xtrackers_msci[,"log_returns"] <- 0
 for (i in 2:nrow(xtrackers_msci)) {
-  
-  xtrackers_msci[i,8] <- (log(xtrackers_msci[i,5]/xtrackers_msci[i-1,5]))*100
-  
+  xtrackers_msci[i,"log_returns"] <- (log(xtrackers_msci[i,5]/xtrackers_msci[i-1,5]))*100
 }
+xtrackers_msci <- xtrackers_msci[-1,]
 
-colnames(xtrackers_msci)[8] <- "log_returns"
-xtrackers_msci <- xtrackers_msci[-1,] #get rid of first observation that has no return value
-
-#take out the returns from the dataset
+# Save log returns as vector
 xtrack_returns <- xtrackers_msci[,8]
 
+# 2 Descriptive Statistics --------------------------------------------------------------
 
-# 2 Analysis --------------------------------------------------------------
-
-#obtain basic stats
+# Summary statistics
 basicStats(xtrack_returns)
 
-#Test for mean being zero
+# Plot of log returns
+ggplot(xtrackers_msci, aes(x=Date, y=log_returns)) +
+  geom_line() + 
+  labs(title = "Log Returns", 
+       subtitle = "Xtrackers MSCI World UCITS ETF | 08/2014 - 05/2022", 
+       x = "Time",
+       y = "Log Return") +
+  theme(panel.grid.minor = element_blank())
+
+# 3 Analysis --------------------------------------------------------------
+
+# Test for zero mean
 t.test(xtrack_returns)
 
-#Test for normality of returns
-normalTest(xtrack_returns,method="jb") #(Jarque-Bera test)
+# Test for normality (Jarque-Bera Test)
+normalTest(xtrack_returns, method = "jb")
 
-#Test for normality via Chi-Square
+# ACF and PACF of log returns
+# -> (Partial) Autocorrelations ouside the confidence bounds are significant
 par(mfrow=c(1,2))
-acf(xtrack_returns,lag.max=30,main="Xtrackers MSCI World UCITS ETF")
+acf(xtrack_returns, lag.max=30, main = "ACF | Log Returns", ylim=range(-1,1))
+pacf(xtrack_returns, lag.max=30, main = "PACF | Log Returns", ylim=range(-1,1))
 
-Box.test(xtrack_returns,lag=30,type="Ljung") #Ljung-Box statistic Q(5)
+# Ljung-Box Test
+# -> according to ACF/PACF plot: Test autocorrelation for lags 3 and 7
+# -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of autocorrelation for given lag
+for (i in c(1,3,5,7)) {
+  stat <- Box.test(xtrack_returns, lag=i, type="Ljung")
+  print(stat$p.value)
+}
 
-pacf(xtrack_returns, main="Xtrackers MSCI World UCITS ETF")
-
-#find first differences
+# First and Second differences of log returns
 par(mfrow=c(2,1))
 xtrack_returns_fd <- ts(xtrackers_msci[2:1954,8]-xtrackers_msci[1:1953,8])
-ts.plot(xtrack_returns_fd, main="Xtrackers MSCI World UCITS ETF First Differences", ylab = "First Differences")
-
+ts.plot(xtrack_returns_fd, main="1st Differences | Log Returns", ylab = "1st Difference")
 xtrack_returns_sd <- ts(xtrackers_msci[3:1954,8]-2*xtrackers_msci[2:1953,8] + xtrackers_msci[1:1952,8])
-ts.plot(xtrack_returns_sd, main="Xtrackers MSCI World UCITS ETF Second Differences", ylab = "Second Differences")
+ts.plot(xtrack_returns_sd, main="2nd Differences | Log Returns", ylab = "2nd Difference")
 
+# ACF and PACF of First and Second differences of log returns
 par(mfrow=c(2,2))
-acf(xtrack_returns_fd, main="Xtrackers MSCI World UCITS ETF First Differences")
-pacf(xtrack_returns_fd, main="Xtrackers MSCI World UCITS ETF First Differences")
+acf(xtrack_returns_fd, lag.max=30, main="ACF | 1st Differences | Log Returns")
+pacf(xtrack_returns_fd, lag.max=30, main="PACF | 1st Differences | Log Returns")
+acf(xtrack_returns_sd, lag.max=30, main="ACF | 2nd Differences | Log Returns")
+pacf(xtrack_returns_sd, lag.max=30, main="PACF | 2nd Differences | Log Returns")
 
-acf(xtrack_returns_sd, main="Xtrackers MSCI World UCITS ETF Second Differences")
-pacf(xtrack_returns_sd, main="Xtrackers MSCI World UCITS ETF Second Differences")
-
-#compare simple and squared returns
+# Comparison of simple and squared returns
 par(mfrow=c(2,1))
 acf(xtrack_returns, main="Xtrackers MSCI World UCITS ETF Log Returns")
 acf(xtrack_returns^2, main="Xtrackers MSCI World UCITS ETF Squared Returns")
@@ -110,7 +132,7 @@ acf(abs(m0@residuals/m0@sigma.t),main="ARCH(1) absolute residuals")
 
 
 
-# 3 Appendix --------------------------------------------------------------
+# 4 Appendix --------------------------------------------------------------
 
 #nice snippet from Audrino that shows the relation between the models
 

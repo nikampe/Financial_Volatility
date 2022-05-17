@@ -26,197 +26,302 @@ library(ggplot2)
 library(nortsTest)
 library(stargazer)
 library(forecast)
+library(moments)
+library(modelsummary)
+library(xtable)
+options("modelsummary_format_numeric_latex" = "plain")
 
 # Working directory
 getwd()
-#setwd("~/Documents/GitHub/Financial_Volatility")
+setwd("~/Documents/GitHub/Financial_Volatility")
 
-# Import data set and numeric transformation
+# 1 Data Import & Cleaning --------------------------------------------------------------
+
+# 1.1 Import data set & numeric transformation -----------------------------------
 xtrackers_msci <- read.csv(as.matrix("XDWD.DE.csv")) %>%
   mutate_at(vars(Date),as.Date) %>%
   mutate_at(vars(Open, High, Low, Close, Adj.Close, Volume),as.numeric)
 
-# Check of NA values
+# 1.2 Check for  NA values -------------------------------------------------------
 xtrackers_msci[is.na(xtrackers_msci[,2]),]
 
-# Check column classes and omit NA values
+# 1.3 Check column classes & omit NA values --------------------------------------
 str(xtrackers_msci)
 xtrackers_msci %<>% na.omit()
 
-# Calculate log returns from closing prices
+# 1.4 Calculate log returns from closing prices ----------------------------------
 xtrackers_msci[,"log_returns"] <- 0
 for (i in 2:nrow(xtrackers_msci)) {
   xtrackers_msci[i,"log_returns"] <- (log(xtrackers_msci[i,5]/xtrackers_msci[i-1,5]))*100
 }
 xtrackers_msci <- xtrackers_msci[-1,]
 
-# Save log returns as vector
+# 1.5 Save log returns as vector -------------------------------------------------
 xtrack_returns <- xtrackers_msci[,8]
 
 # 2 Descriptive Statistics --------------------------------------------------------------
 
-#THEORY addition in paper: (describe data set)
-
-# Plot of time series of Clsoing prices
+# 2.1 Plot of time series of Closing prices --------------------------------------
+pdf("Figures/Plot_Prices.pdf") 
 ggplot(xtrackers_msci, aes(x=Date, y=Close)) +
   geom_line() + 
-  labs(title = "Price development", 
+  labs(title = "Prices", 
        subtitle = "Xtrackers MSCI World UCITS ETF | 08/2014 - 05/2022", 
        x = "Time",
-       y = "Price (in €)") +
+       y = "Prices (in EUR)") +
   theme(panel.grid.minor = element_blank())
+dev.off()
 
-
-# Plot of time series of log returns
+# 2.2 Plot of time series of log returns -----------------------------------------
+pdf("Figures/Plot_Returns.pdf") 
 ggplot(xtrackers_msci, aes(x=Date, y=log_returns)) +
   geom_line() + 
   labs(title = "Log Returns", 
        subtitle = "Xtrackers MSCI World UCITS ETF | 08/2014 - 05/2022", 
        x = "Time",
-       y = "Log Return") +
+       y = "Log Returns") +
   theme(panel.grid.minor = element_blank())
+dev.off()
 
-#THEORY addition in paper: (Take reference to high volatility periods à Dot-Com, Global Financial Crisis, Covid-19 …)
+# 2.3 Summary Statistics of dataset ----------------------------------------------
+basicStats(xtrack_returns)
 
-# Description of dataset
-basicStats(xtrack_returns) #potentially write about observed patterns in paper
+# 3 Model Fit and Forecast Comparisons -------------------------------------------
 
-# 3 Model Fit and Forecast Comparisons ------------------------------------
-# 3.1 Check for stylized facts of the time series -------------------------
+# 3.1 Check for stylized facts of the time series --------------------------------
 
-#autocorrelation in time series for different lags
-# Ljung-Box Test
-# -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of autocorrelation for given lag
+# 3.1.1 Check for autocorrelation for different lags: Ljung-Box Test -------------
 for (i in c(1,3,5,7)) {
-  stat <- Box.test(xtrack_returns, lag=i, type="Ljung")
-  print(stat$p.value)
+  stat <- Box.test(xtrack_returns, lag=i, type="Ljung") 
+  print(stat$p.value) # -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of autocorrelation for given lag
+} # --> INSIGHT: We have significant autocorrelations for the lags tested
+
+# 3.1.2 Check for (G)ARCH effects: LM (Lagrange Multiplier) Test -----------------
+Lm.test(xtrack_returns, lag.max = 5, alpha = 0.05) # -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of homoskedasticity for a maximum lag of 5
+# --> INSIGHT: our log returns are, as expected, heteroskedastic for a lag of up to 5 time steps
+
+# 3.1.3 Check for asymmetries and tail distributions: Histogram & Statistics -----
+binwidth <- 0.2
+pdf("Figures/Histogram_Returns.pdf") 
+ggplot(xtrackers_msci, aes(x=log_returns)) +
+  geom_histogram(aes(y = ..density..), binwidth = binwidth) + 
+  stat_function(fun = dnorm,
+                args = list(mean = mean(xtrackers_msci$log_returns, na.rm=TRUE),
+                            sd = sd(xtrackers_msci$log_returns, na.rm=TRUE)),
+                col = "red",
+                size = 0.5) + 
+  labs(title = "Log Returns", 
+       subtitle = "Xtrackers MSCI World UCITS ETF | 08/2014 - 05/2022", 
+       x = "Log Returns",
+       y = "Density") +
+  theme(panel.grid.minor = element_blank()) # --> INSIGHT: Approximately zero mean, Fat tails --> Further diagnositcs below
+dev.off()
+
+# 3.1.4 Test for additional distribution properties: Moments, T-Test, JB Test ---- 
+t.test(xtrack_returns) # --> INSIGHT: Zero mean with 95% confidence
+normalTest(xtrack_returns, method = "jb") # --> INSIGHT: Not normaly distirbuted
+skewness(xtrackers_msci$log_returns, na.rm=TRUE) # --> INSIGHT: Slightly negatively skewed
+kurtosis(xtrackers_msci$log_returns, na.rm=TRUE) # --> INSIGHT: Fat/Heavy tails
+
+# 3.1.5 Check for asymmetries & leverage effect: Autocorrelations & Regression ---
+
+# 3.1.5.1 Leverage Effect: Autocorrelations --------------------------------------
+a <- c()
+c <- c()
+for (i in 1:length(xtrack_returns))  {
+  a <- c(a, max(xtrack_returns[i], 0))
 }
+for (h in 1:40) {
+  c <- c(c, cor(a[(1+h):(length(a))],xtrack_returns[(1):(length(xtrack_returns)-h)]))
+}
+cor_summary <- data.frame(row.names = c("XDWD"))
+lags <- c(1,2,5,10,20,40)
+for (i in 1:length(lags)) {
+  j = lags[i]
+  cor_summary[1,i] <- c[j]
+}
+colnames(cor_summary) <- lags
+sink(file = "Latex/Table_Leverage_Effect.txt")
+xtable(cor_summary) # --> INISGHT: Leverage effect given (negative autocorrelations)
+sink(file = NULL)
 
-#INSIGHT: We have significant autocorrelations for the lags tested
+## 3.1.5.2 Asymmetry: Test Regression --------------------------------------------
+h_arr <- c(1,5)
+sign_bias_coefs <- c()
+neg_size_bias_coefs <- c()
+pos_sign_bias_coefs <- c()
+asy_summary <- data.frame(row.names = c("XDWD"))
+for (h in h_arr) {
+  sign_bias <- (xtrack_returns < 0)
+  neg_size_bias <- c()
+  pos_sign_bias <- c()
+  for (i in 1:length(xtrack_returns)) {
+    neg_size_bias <- c(neg_size_bias, 100*min(xtrack_returns[i], 0))
+    pos_sign_bias <- c(pos_sign_bias, 100*max(xtrack_returns[i], 0))
+  }
+  sign_bias <- lm(100*xtrack_returns[(h+1):length(xtrack_returns)]^2 ~ sign_bias[1:(length(xtrack_returns)-h)])
+  sign_bias_coefs <- c(sign_bias_coefs, sign_bias$coef[2])
+  neg_size_bias <- lm(100*xtrack_returns[(h+1):length(xtrack_returns)]^2 ~ neg_size_bias[1:(length(xtrack_returns)-h)])
+  neg_size_bias_coefs <- c(neg_size_bias_coefs, neg_size_bias$coef[2])
+  pos_sign_bias <- lm(100*xtrack_returns[(h+1):length(xtrack_returns)]^2 ~ pos_sign_bias[1:(length(xtrack_returns)-h)])
+  pos_sign_bias_coefs <- c(pos_sign_bias_coefs, pos_sign_bias$coef[2])
+}
+coefs <- c(sign_bias_coefs, neg_size_bias_coefs, pos_sign_bias_coefs)
+for (i in 1:6) {
+  coef <- coefs[i]
+  asy_summary[1,i] <- coef
+}
+colnames(asy_summary) <- c("SB (h=1)", "SB (h=5)", "NSB (h=1)", "NSB (h=5)", "PSB (h=1)", "PSB (h=5)")
+sink(file = "Latex/Table_Leverage_Effect.txt")
+xtable(asy_summary) # --> INISGHT: Asymmetry given (stronger effect of negativity)
+sink(file = NULL)
 
+# 3.2 Identification of GARCH models ---------------------------------------------
 
-# Lagrange multiplier test
-# -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of homoskedasticity for a maximum lag of 5
-Lm.test(xtrack_returns,lag.max = 5,alpha = 0.05)
-
-#INSIGHT: our log returns are, as expected, heteroskedastic for a lag of up to 5 time steps
-
-#TBD Asymmetries and tail tests TBD
-
-#Appendix: Additional tests
-
-# Test for zero mean
-t.test(xtrack_returns)
-# Test for normality (Jarque-Bera Test)
-normalTest(xtrack_returns, method = "jb")
-
-#confirm our results from above
-
-
-# 3.2 Identification of GARCH models --------------------------------------
-
-# Comparison of log and squared log returns
+# 3.2.1 Comparison of log and squared log returns --------------------------------
+max_lags <- 30
+pdf("Figures/Comparison_Log_Returns.pdf") 
 par(mfrow=c(2,1))
-acf(xtrack_returns, main="Xtrackers MSCI World UCITS ETF Log Returns")
-acf(xtrack_returns^2, main="Xtrackers MSCI World UCITS ETF Squared Log Returns")
+acf(xtrack_returns, lag.max=max_lags, main="Xtrackers MSCI World UCITS ETF Log Returns")
+acf(xtrack_returns^2, lag.max=max_lags, main="Xtrackers MSCI World UCITS ETF Squared Log Returns")
+dev.off()
 
-# ACF and PACF of log and squared log returns
-# -> (Partial) autocorrelations outside the confidence bounds are significant
+# 3.2.2 ACF and PACF of log and squared log returns ----------------------------
+pdf("Figures/Comparison_Log_Returns.pdf") 
 par(mfrow=c(2,2))
-acf(xtrack_returns, lag.max=30, main = "ACF | Log Returns", ylim=range(-1,1))
-pacf(xtrack_returns, lag.max=30, main = "PACF | Log Returns", ylim=range(-1,1))
-acf(xtrack_returns^2, lag.max=30, main = "ACF | Squared Log Returns", ylim=range(-1,1))
-pacf(xtrack_returns^2, lag.max=30, main = "PACF | Squared Log Returns", ylim=range(-1,1))
+acf(xtrack_returns, lag.max=max_lags, main="ACF | Log Returns", ylim=range(-1,1))
+pacf(xtrack_returns, lag.max=max_lags, main="PACF | Log Returns", ylim=range(-1,1))
+acf(xtrack_returns^2, lag.max=max_lags, main="ACF | Squared Log Returns", ylim=range(-1,1))
+pacf(xtrack_returns^2, lag.max=max_lags, main="PACF | Squared Log Returns", ylim=range(-1,1)) # -> (Partial) autocorrelations outside the confidence bounds are significant
+dev.off()
 
-#THEORY: Infer from the graph the signficant lags
+# 3.2.3 Table with sample autocorrelations -------------------------------------
+lags <- 0:30
+acf_returns <- round(acf(xtrack_returns, lag.max=max_lags, pl=F)$acf, 4)
+pacf_returns <- c("-", round(pacf(xtrack_returns, lag.max=max_lags, pl=F)$acf, 4))
+acf_squared_returns <- round(acf(xtrack_returns^2, lag.max=max_lags, pl=F)$acf, 4)
+pacf_squared_returns <- c("-", round(pacf(xtrack_returns^2, lag.max=max_lags, pl=F)$acf, 4))
+acf_table <- data.frame(ACF_Returns = acf_returns, 
+                        PACF_Returns = pacf_returns, 
+                        ACF_Squared_Returns = acf_squared_returns, 
+                        PACF_Squared_Returns = pacf_squared_returns, 
+                        row.names = lags) # --> INSIGHT: We try a GARCH(1,1) model (benchmark) against other GARCH models, particularly a GARCH(1,2),
+                                          #     a GARCH(2,2), as well as a GARCH(3,3) due to the partly strongly auto correlated squared log returns.
 
-#Tables with sample autocorrelations up to lag 30
-acf(xtrack_returns, lag.max=30, pl=F)
-pacf(xtrack_returns, lag.max=30, pl=F)
-acf(xtrack_returns^2, lag.max=30, pl=F)
-pacf(xtrack_returns^2, lag.max=30, pl=F) #potentially add the significance level and enhance the looks of the tables, still missing here
+# 3.3 Model Fit of GARCH -------------------------------------------------------
 
-#INSIGHT: We try a GARCH(1,1) model (benchmark) against other GARCH models, particularly a GARCH(1,2),
-          #a GARCH(2,2), as well as a GARCH(3,3) due to the partly strongly auto correlated squared log returns.
-
-### further insight on the special GARCHs to be added! ###
-
-
-# 3.3 Model Fit of GARCH --------------------------------------------------
-
-#Split return series in training and test sample
+# 3.3.1 Train-Test Split -------------------------------------------------------
+train_size <- 0.7
 xtrackers_msci$Split <- rep(x = c("Training", "Test"),
-                        times = c(floor(x = 0.7 * nrow(x = xtrackers_msci)), ceiling(x = 0.3 * nrow(x = xtrackers_msci))))
+                        times = c(floor(x = train_size * nrow(x = xtrackers_msci)), ceiling(x = (1-train_size) * nrow(x = xtrackers_msci))))
 train <- xtrackers_msci[xtrackers_msci$Split %in% c('Training'),]
-test <- xtrackers_msci[xtrackers_msci$Split %in% c('Test'),]
+test <- xtrackers_msci[xtrackers_msci$Split %in% c('Test'),] # --> INSIGHT: this split is interesting since we are essentially going to predict the Corona crisis.
 
-#INSIGHT: this split is interesting since we are essentially going to predict the Corona crisis.
-
-#make a plot of the lof returns over the sample period (pre-Corona)
+# 3.3.2 Plot of training sample (pre-Covid) ------------------------------------
+pdf("Figures/Plot_Training_Sample.pdf") 
 ggplot(train, aes(x=Date, y=log_returns)) +
   geom_line() + 
-  labs(title = "Training sample log returns", 
+  labs(title = "Training Sample - Log Returns", 
        subtitle = "Xtrackers MSCI World UCITS ETF | 08/2014 - 01/2020", 
        x = "Time",
        y = "log returns") +
   theme(panel.grid.minor = element_blank())
-
+dev.off()
 train_returns <- as.vector(train$log_returns)
 
-#estimate model parameters for General GARCH models
-#ARCH(1)
-m0 <- garch(train_returns, order = c(0, 1))
-summary(m0)
-plot(m0)
-fit0 <- fitted.values(m0)
+# 3.3.3 Model fit & Determination of model parameters --------------------------
 
-#GARCH(1,1)
+# ## ARCH(1)
+# m0 <- garch(train_returns, order = c(0, 1)) # ALTERNATIVE: garchFit(train_returns ~ garch(0,1), data=train_returns, trace=F, description="ARCH(1)")
+# fit0 <- fitted.values(m0)
+# pdf("Figures/Analysis_Residuals_0.pdf") 
+# par(mfrow=c(3,2))
+# layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
+# plot(train$Date,train$log_returns, type="l", col="red")
+# lines(train$Date, fit0, col="green")
+# plot(m0$residuals, main="Residuals", xlab="Time", ylab="Residual")
+# hist(m0$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+# qqnorm(m0$residuals, main="QQ-Plot | Residuals")
+# acf(m0$residuals[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+# dev.off()
+
+## GARCH(1,1)
 m1 <- garch(train_returns, order = c(1, 1))
-summary(m1)
-plot(m1)
-fit1 <- fitted.values(m1)
+m11 <- garchFit(formula = ~ garch(1,1), data=train_returns, trace=F, description="GARCH(1,1)")
+fit1 <- fitted(m11)
+pdf("Figures/Analysis_Residuals_1.pdf") 
+layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
+plot(train$Date, train$log_returns, type="l", col="blue", main="GARCH(1,1) | Fitted Values", xlab="Time", ylab="Return")
+lines(train$Date, fit1,  col=alpha("red", 0.5))
+plot(train$Date, m1$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m1$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m1$residuals, main="QQ-Plot | Residuals")
+acf(m1$residuals[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+dev.off()
 
-#GARCH(1,2)
+## GARCH(1,2)
 m2 <- garch(train_returns, order = c(1, 2))
-summary(m2)
-plot(m2)
-fit2 <- fitted.values(m2)
+m22 <- garchFit(formula = ~ garch(1,2), data=train_returns, trace=F, description="GARCH(1,2)")
+fit2 <- fitted(m22)
+pdf("Figures/Analysis_Residuals_2.pdf") 
+layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
+plot(train$Date,train$log_returns, type="l", col="blue", main="GARCH(1,2) | Fitted Values", xlab="Time", ylab="Return")
+lines(train$Date, fit2,  col=alpha("red", 0.5))
+plot(train$Date, m2$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m2$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m2$residuals, main="QQ-Plot | Residuals")
+acf(m2$residuals[-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+dev.off()
 
-#GARCH(2,2)
+## GARCH(2,2)
 m3 <- garch(train_returns, order = c(2, 2))
-summary(m3)
-plot(m3)
-fit3 <- fitted.values(m3)
+m33 <- garchFit(formula = ~ garch(2,2), data=train_returns, trace=F, description="GARCH(2,2)")
+fit3 <- fitted(m33)
+pdf("Figures/Analysis_Residuals_3.pdf") 
+layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
+plot(train$Date,train$log_returns, type="l", col="blue", main="GARCH(2,2) | Fitted Values", xlab="Time", ylab="Return")
+lines(train$Date, fit3,  col=alpha("red", 0.5))
+plot(train$Date, m3$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m3$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m3$residuals, main="QQ-Plot | Residuals")
+acf(m3$residuals[-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+dev.off()
 
-#GARCH(3,3)
+## GARCH(3,3)
 m4 <- garch(train_returns, order = c(3, 3))
-summary(m4)
-plot(m4)
-fit4 <- fitted.values(m4)
+m44 <- garchFit(formula = ~ garch(3,3), data=train_returns, trace=F, description="GARCH(3,3)")
+fit4 <- fitted(m44)
+pdf("Figures/Analysis_Residuals_4.pdf") 
+layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
+plot(train$Date,train$log_returns, type="l", col="blue", main="GARCH(3,3) | Fitted Values", xlab="Time", ylab="Return")
+lines(train$Date, fit4,  col=alpha("red", 0.5))
+plot(train$Date, m4$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m4$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m4$residuals, main="QQ-Plot | Residuals")
+acf(m4$residuals[-1][-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+dev.off()
+
+## Model Summary
+summary <- list("ARCH(1)" = m0, "GARCH(1,1)" = m1, "GARCH(1,2)" = m2, "GARCH(2,2)" = m3, "GARCH(3,3)" = m4)
+modelsummary(summary, stars = TRUE)
+sink(file = "Latex/Model_Summary.txt")
+modelsummary(summary, stars = TRUE, output = "latex")
+sink(file = NULL)
 
 ### SPECIAL GARCHS STILL MISSING HERE ### STILL TO BE INCLUDED @ NIKLAS
 
-
-### EVALUATION WITH AIC/BIC STILL MISSING HERE ### @NIKLAS/CLARA FEEL FREE TO COCLUDE THIS HERE
-
-
-### plot fitted values against sample values ### TBD
-
-
-
 # 4 Model Forecast of GARCH -----------------------------------------------
 
-o Split of training (fit) and testing (forecast) samples à Use/Plot testing sample
-o Define forecast horizon/lags n
-o Calculate volatility forecasts of General GARCH and best Special GARCH
+# o Split of training (fit) and testing (forecast) samples à Use/Plot testing sample
+# o Define forecast horizon/lags n
+# o Calculate volatility forecasts of General GARCH and best Special GARCH
 
 # 5 Model Forecast Comparison with Realized Volatility (RV) ---------------
 
-- Model Forecast Comparison with Realized Volatility (RV)
-o Choose forecast horizon/lags n as before
-o Calculate volatility forecasts by Realized Volatility (RV)
-o Compare RV forecast results with General GARCH and Special GARCH forecasts
-(…) = only referring to written part, not to code
+# - Model Forecast Comparison with Realized Volatility (RV)
+# o Choose forecast horizon/lags n as before
+# o Calculate volatility forecasts by Realized Volatility (RV)
+# o Compare RV forecast results with General GARCH and Special GARCH forecasts
 
 # 4 Appendix --------------------------------------------------------------
 

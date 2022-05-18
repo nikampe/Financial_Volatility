@@ -1,0 +1,12 @@
+% latex table generated in R 4.0.3 by xtable 1.8-4 package
+% Wed May 18 21:21:32 2022
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrrrrrrrrrrrrrrr}
+  \hline
+ & nobs & NAs & Minimum & Maximum & 1. Quartile & 3. Quartile & Mean & Median & Sum & SE Mean & LCL Mean & UCL Mean & Variance & Stdev & Skewness & Kurtosis \\ 
+  \hline
+Log returns & 1953.00 & 0.00 & -10.65 & 7.78 & -0.41 & 0.57 & 0.04 & 0.11 & 86.65 & 0.02 & -0.00 & 0.09 & 1.15 & 1.07 & -0.92 & 10.10 \\ 
+   \hline
+\end{tabular}
+\end{table}

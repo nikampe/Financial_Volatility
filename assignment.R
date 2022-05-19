@@ -29,6 +29,8 @@ library(forecast)
 library(moments)
 library(modelsummary)
 library(xtable)
+library(texreg)
+library(rugarch)
 options("modelsummary_format_numeric_latex" = "plain")
 
 # Working directory
@@ -240,6 +242,22 @@ test_returns <- as.vector(test$log_returns)
 
 # 3.3.3.1 GARCH Models ---------------------------------------------------------
 
+# TEST @Niklas
+ic_standard <- matrix(0,9,4)
+colnames(ic_standard) <- c("p","q","aic","llh")
+k=1
+for(q in 1:3){
+  for(p in 1:3){
+    garch_spec <- formula(paste("~ garch(",p,",",q,")"))
+    m <- garchFit(garch_spec, data=train_returns, trace=F)
+    ic_standard[k,] <- c(p,q,extract(m)@gof[2],extract(m)@gof[3])
+    k <- k+1
+  }
+}
+ic_standard <- as.data.frame(ic_standard)
+best_orders <- ic_standard[which.min(ic_standard$aic), c("p", "q")]
+best_orders
+
 ## ARCH(1)
 m0 <- garchFit(formula = ~ garch(1,0), data=train_returns, trace=F, description="ARCH(1)") #this is the ARCH model (this is basically a pure auto-regression)
 fit0 <- fitted(m0)
@@ -256,123 +274,136 @@ acf(residuals(m0)[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=
 dev.off()
 
 ## GARCH(1,1)
-m1 <- garchFit(train_returns ~ garch(1,1), data=train_returns, trace=F, description="GARCH(1,1)")
-fit1 <- fitted(m1)
+# m1 <- garchFit(train_returns ~ garch(1,1), data=train_returns, trace=F, description="GARCH(1,1)")
+m1 <- garch(train_returns, order=c(1,1))
+fit1 <- m1$fitted.values[-1,1]
 summary(m1)
 
 pdf("Figures/Analysis_Residuals_1.pdf") 
 layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
 plot(train$Date, train$log_returns, type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
-plot(train$Date, fit1, type="l", col="red", main="GARCH(1,1) | Fitted Values", xlab="Time", ylab="Return")
-plot(train$Date, residuals(m1), type="l", main="Residuals", xlab="Time", ylab="Residual")
-hist(residuals(m1), main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
-qqnorm(residuals(m1), main="QQ-Plot | Residuals")
-acf(residuals(m1)[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
+plot(train$Date[-1], fit1, type="l", col="red", main="GARCH(1,1) | Estimated Conditional Volatility", xlab="Time", ylab="Cond. Volatility", ylim=range(0,3.5))
+plot(train$Date, m1$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m1$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m1$residuals, main="QQ-Plot | Residuals")
+acf(m1$residuals[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
 dev.off()
 
 ## GARCH(1,2)
-m2 <- garchFit(formula = ~ garch(1,2), data=train_returns, trace=F, description="GARCH(1,2)")
-fit2 <- fitted(m2)
+# m2 <- garchFit(formula = ~ garch(1,2), data=train_returns, trace=F, description="GARCH(1,2)")
+m2 <- garch(train_returns, order=c(1,2))
+fit2 <- m2$fitted.values[-1,1]
 summary(m2)
 
 pdf("Figures/Analysis_Residuals_2.pdf")
 layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
 plot(train$Date, train$log_returns, type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
-plot(train$Date, fit2, type="l", col="red", main="GARCH(1,2) | Fitted Values", xlab="Time", ylab="Return")
-plot(train$Date, residuals(m2), type="l", main="Residuals", xlab="Time", ylab="Residual")
-hist(residuals(m2), main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
-qqnorm(residuals(m2), main="QQ-Plot | Residuals")
-acf(residuals(m2)[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
+plot(train$Date[-1], fit2, type="l", col="red", main="GARCH(1,2) | Estimated Conditional Volatility", xlab="Time", ylab="Cond. Volatility", ylim=range(0,3.5))
+plot(train$Date, m2$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m2$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m2$residuals, main="QQ-Plot | Residuals")
+acf(m2$residuals[-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
 dev.off()
 
 ## GARCH(2,2)
-m3 <- garchFit(formula = ~ garch(2,2), data=train_returns, trace=F, description="GARCH(2,2)")
-fit3 <- fitted(m3)
+# m3 <- garchFit(formula = ~ garch(2,2), data=train_returns, trace=F, description="GARCH(2,2)")
+m3 <- garch(train_returns, order=c(2,2))
+fit3 <- m3$fitted.values[-1,1]
 summary(m3)
 
 pdf("Figures/Analysis_Residuals_3.pdf") 
 layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
 plot(train$Date, train$log_returns, type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
-plot(train$Date, fit3, type="l", col="red", main="GARCH(2,2) | Fitted Values", xlab="Time", ylab="Return")
-plot(train$Date, residuals(m3), type="l", main="Residuals", xlab="Time", ylab="Residual")
-hist(residuals(m3), main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
-qqnorm(residuals(m3), main="QQ-Plot | Residuals")
-acf(residuals(m3)[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
+plot(train$Date[-1], fit3, type="l", col="red", main="GARCH(2,2) | Estimated Conditional Volatility", xlab="Time", ylab="Cond. Volatility", ylim=range(0,3.5))
+plot(train$Date, m3$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m3$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m3$residuals, main="QQ-Plot | Residuals")
+acf(m3$residuals[-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
 dev.off()
 
 ## GARCH(3,3)
-m4 <- garchFit(formula = ~ garch(3,3), data=train_returns, trace=F, description="GARCH(3,3)")
-fit4 <- fitted(m4)
+# m4 <- garchFit(formula = ~ garch(3,3), data=train_returns, trace=F, description="GARCH(3,3)")
+m4 <- garch(train_returns, order=c(3,3))
+fit4 <- m4$fitted.values[-1,1]
 summary(m4)
 
 pdf("Figures/Analysis_Residuals_4.pdf") 
 layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
 plot(train$Date, train$log_returns, type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
-plot(train$Date, fit4, type="l", col="red", main="GARCH(3,3) | Fitted Values", xlab="Time", ylab="Return")
-plot(train$Date, residuals(m4), type="l", main="Residuals", xlab="Time", ylab="Residual")
-hist(residuals(m4), main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
-qqnorm(residuals(m4), main="QQ-Plot | Residuals")
-acf(residuals(m4)[-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
+plot(train$Date[-1], fit4, type="l", col="red", main="GARCH(3,3) | Estimated Conditional Volatility", xlab="Time", ylab="Cond. Volatility", ylim=range(0,3.5))
+plot(train$Date, m4$residuals, type="l", main="Residuals", xlab="Time", ylab="Residual")
+hist(m4$residuals, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
+qqnorm(m4$residuals, main="QQ-Plot | Residuals")
+acf(m4$residuals[-1][-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
 dev.off()
 
 ## Standard GARCH Models Summary
 summary_standard <- list("GARCH(1,1)" = m1, "GARCH(1,2)" = m2, "GARCH(2,2)" = m3, "GARCH(3,3)" = m4)
-stargazer(summary_standard, title = "Model summaries", dep.var.labels = "Log returns (Training Set)", single.row = T,
-          nobs = F, column.sep.width = "2.5pt", model.numbers = F, column.labels = c("GARCH(1,1)","GARCH(1,2)","GARCH(2,2)", "GARCH(3,3)"))
+# stargazer(summary_standard, title = "Model summaries", dep.var.labels = "Log returns (Training Set)", single.row = T,
+#           nobs = F, column.sep.width = "2.5pt", model.numbers = F, column.labels = c("GARCH(1,1)","GARCH(1,2)","GARCH(2,2)", "GARCH(3,3)"))
+sink(file = "Latex/Summary_Standard_GARCH.txt")
+texreg(summary_standard)
+sink(file = NULL)
 # --> INSIGHT: As we saw from our analysis before, the tails are very fat and we also have an asymmetry as expected for real log returns.
 #              We now develop a few special GARCH models to try to account for this.
 
 ## T-GARCH
-m5 <- garchFit(~ aparch(1,1), data=train_returns, delta = 1, include.delta = F)
-fit5 <- fitted(m5)
-summary(m5)
+# m5 <- garchFit(~ aparch(1,1), data=train_returns, delta = 1, include.delta = F)
+m5_spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(1,1), submodel="TGARCH"), mean.model=list(armaOrder=c(0,0)), distribution.model="std")
+m5 <- ugarchfit(spec=m5_spec, data=train_returns)
+fit5 <- m5@fit$sigma
 
 pdf("Figures/Analysis_Residuals_5.pdf") 
-layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
-plot(train$Date,train$log_returns, type="l", col="blue", main="Treshold GARCH(1,1) | Fitted Values", xlab="Time", ylab="Return")
-lines(train$Date, fit5,  col=alpha("red", 0.5))
+layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
+plot(train$Date,train$log_returns, type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
+plot(train$Date, fit5, type="l", col="red", main="T-GARCH(1,1) | Estimated Conditional Volatility", xlab="Time", ylab="Cond. Volatility", ylim=range(0,3.5))
 plot(train$Date, residuals(m5), type="l", main="Residuals", xlab="Time", ylab="Residual")
 hist(residuals(m5), main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
 qqnorm(residuals(m5), main="QQ-Plot | Residuals")
-acf(residuals(m5)[-1][-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+acf(residuals(m5)^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
 dev.off()
 
 ## GJR-GARCH
-m6 <- garchFit(~ aparch(1,1), data=train_returns, delta = 2, include.delta = F)
-fit6 <- fitted(m6)
-summary(m6)
+# m6 <- garchFit(~ aparch(1,1), data=train_returns, delta = 2, include.delta = F)
+m6_spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(1,1), submodel="GJRGARCH"), mean.model=list(armaOrder=c(0,0)), distribution.model="std")
+m6 <- ugarchfit(spec=m6_spec, data=train_returns)
+fit6 <- m6@fit$sigma
 
 pdf("Figures/Analysis_Residuals_6.pdf") 
-layout(matrix(c(1,1,2,3,4,5), nrow=3, ncol=2, byrow = TRUE))
-plot(train$Date,train$log_returns, type="l", col="blue", main="GJR-GARCH(1,1) | Fitted Values", xlab="Time", ylab="Return")
-lines(train$Date, fit6,  col=alpha("red", 0.5))
+layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
+plot(train$Date,train$log_returns, type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
+plot(train$Date, fit6, type="l", col="red", main="GJR-GARCH(1,1) | Estimated Conditional Volatility", xlab="Time", ylab="Cond. Volatility", ylim=range(0,3.5))
 plot(train$Date, residuals(m6), type="l", main="Residuals", xlab="Time", ylab="Residual")
 hist(residuals(m6), main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
 qqnorm(residuals(m6), main="QQ-Plot | Residuals")
-acf(residuals(m6)[-1][-1][-1]^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
+acf(residuals(m6)^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
 dev.off()
 
 ## Special GARCH Models Summary
-summary_special <- list("GARCH(1,1)" = m1, "GARCH(3,3)" = m4, "T-GARCH(1,1)" = m5, "GJR-GARCH(1,1)" = m6)
+summary_special <- list("GARCH(1,1)" = m1, "T-GARCH(1,1)" = m5, "GJR-GARCH(1,1)" = m6)
 stargazer(summary_special, title = "Model summaries", dep.var.labels = "Log returns (Training Set)", single.row = T,
           nobs = F, column.sep.width = "2.5pt", model.numbers = F, column.labels = c("GARCH(1,1)","GARCH(3,3)","T-GARCH(1,1)", "GJR-GARCH(1,1)"))
 # --> INSIGHT: The special GARCHs that account for the asymmetry unfortunately do not really produce any better results. --> what now?
 
 # 3.3.3.1 Realized Volatility: HAR Model ---------------------------------------
-rv_daily <- c()
-rv_weekly <- c()
-rv_monthly <- c()
-for (i in 22:length(train)) {
-  rv_daily <- c(rv_daily, NULL)
-  rv_weekly <- c(rv_daily, NULL)
-  rv_weekly <- c(rv_daily, NULL)
+## h=1
+rv_daily <- rv_weekly <- rv_monthly <- c() # TBD!!!!!!
+for (i in 22:nrow(train)) {
+  rv_daily <- c(rv_daily, train[i,"High"] - train[i,"Low"])
+  rv_weekly <- c(rv_weekly, max(train[(i-5):(i-1),"High"]) - min(train[(i-5):(i-1),"Low"]))
+  rv_monthly <- c(rv_monthly, max(train[(i-21):(i-1),"High"]) - min(train[(i-21):(i-1),"Low"]))
 }
-har <- lm(train_returns[22:length(train_returns)] ~ rv_daily + rv_weekly + rv_monthly)
+rv_daily <- rv_daily[-length(rv_daily)]
+rv_weekly <- rv_weekly[-length(rv_weekly)]
+rv_monthly <- rv_monthly[-length(rv_monthly)]
+har <- lm(train_returns[23:length(train_returns)] ~ rv_daily + rv_weekly + rv_monthly)
+har_coef <- har$coefficients
+summary(har)
 
 # 4 Model Forecast of GARCH ----------------------------------------------------
 
 # 4.1 Define Forecast Horizons -------------------------------------------------
-n_arr <- c()
+n_arr <- c() # TBD!!!!!!
 for (i in c(0.25, 0.5, 0.75, 1)) {
   n <- floor(i*length(test_returns))
   n_arr <- c(n_arr, n)
@@ -381,16 +412,10 @@ for (i in c(0.25, 0.5, 0.75, 1)) {
 # 4.2 Model Forecasts of Best GARCH and RV -------------------------------------
 
 ## Realized Volatility (RV): HAR Model
-test_adj <- test[c("High", "Low", "Close")]
-rv_daily <- c()
-rv_weekly <- c()
-rv_monthly <- c()
-for (i in 1:length(test_adj)) {
-  
-}
 
 ## GARCH(1,1)
-predict(m1, n.ahead=n)
+m1_forecast <- predict(m1, newdata=test_returns)
+
 
 # 5 Model Forecast Comparison with Realized Volatility (RV) ----------------------
 

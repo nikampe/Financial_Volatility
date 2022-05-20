@@ -378,18 +378,39 @@ for (model_type in model_types) {
 aics_special <- as.data.frame(aics_special)
 
 # 3.3.2.3 Realized Volatility: HAR Model ---------------------------------------
+## Dependent Variable
+rv_d_h <- c()
+for (i in 23:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])) {
+  rv_d_h <- c(rv_d_h, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"])
+}
+## Independent Variables
 rv_d <- rv_w <- rv_m <- c()
 for (i in 22:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])) {
-  rv_d <- c(rv_d, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"])
-  rv_w <- c(rv_w, max(xtrackers_msci[(i-5):(i-1),"High"]) / min(xtrackers_msci[(i-5):(i-1),"Low"]))
-  rv_m <- c(rv_m, max(xtrackers_msci[(i-21):(i-1),"High"]) / min(xtrackers_msci[(i-21):(i-1),"Low"]))
+  # Daily Realized Variance
+  rv_d <- c(rv_d, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"]) 
+  # Weekly Average of Daily Realized Variance
+  rv_w_temp <- c()
+  for (j in 1:5) {
+    rv_w_temp <- c(rv_w_temp, xtrackers_msci[i-j-1,"High"] / xtrackers_msci[i-j-1,"Low"])
+  }
+  rv_w <- c(rv_w, sum(rv_w_temp)/length(rv_w_temp))
+  # Weekly Average of Daily Realized Variance
+  rv_m_temp <- c()
+  for (k in 1:21) {
+    rv_m_temp <- c(rv_m_temp, xtrackers_msci[i-k-1,"High"] / xtrackers_msci[i-k-1,"Low"])
+  }
+  rv_m <- c(rv_m, sum(rv_m_temp)/length(rv_m_temp)) 
 }
 rv_d <- rv_d[-length(rv_d)]
 rv_w <- rv_w[-length(rv_w)]
 rv_m <- rv_m[-length(rv_m)]
-har <- lm(train_returns[22:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])] ~ rv_d + rv_w + rv_m)
+## Regression with 1-lag 
+har <- lm(rv_d_h ~ rv_d + rv_w + rv_m)
 har_coef <- har$coefficients
+# Model Summary
+sink(file="Latex/Summary_HAR.txt")
 summary(har)
+sink(file = NULL)
 
 #################################################################################
 # @ Niklas

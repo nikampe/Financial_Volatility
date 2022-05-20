@@ -1,0 +1,21 @@
+
+Call:
+lm(formula = rv_d_h ~ rv_d + rv_w + rv_m)
+
+Residuals:
+      Min        1Q    Median        3Q       Max 
+-0.012027 -0.002693 -0.000941  0.001584  0.037696 
+
+Coefficients:
+            Estimate Std. Error t value Pr(>|t|)    
+(Intercept)  0.25874    0.04813   5.376 8.97e-08 ***
+rv_d         0.28751    0.02652  10.843  < 2e-16 ***
+rv_w         0.21192    0.05240   4.044 5.55e-05 ***
+rv_m         0.24377    0.06841   3.563 0.000379 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.004699 on 1342 degrees of freedom
+Multiple R-squared:  0.2032,	Adjusted R-squared:  0.2015 
+F-statistic: 114.1 on 3 and 1342 DF,  p-value: < 2.2e-16
+

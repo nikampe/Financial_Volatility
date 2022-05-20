@@ -285,6 +285,7 @@ summary.rugarch <- function(model, modelname, include.loglike = TRUE, include.ai
 models_standard <- c()
 aics_standard <- matrix(0,9,5)
 colnames(aics_standard) <- c("p","q","AIC","BIC","HQ")
+summaries_standard <- c()
 k <- 1
 for (p in 1:p_max) {
   for(q in 1:q_max) {
@@ -319,11 +320,13 @@ for (p in 1:p_max) {
     acf(res^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-0.5,0.5))
     dev.off()
     # Model Summary
-    sink(file = paste("Latex/Summary_GARCH_",p,"_",q,".txt", sep=""))
-    print(texreg(summary.rugarch(model=model, modelname=paste("GARCH(",p,",",q,")", sep=""))))
-    sink(file = NULL)
+    summaries_standard <- c(summaries_standard, summary.rugarch(model=model, modelname=paste("GARCH(",p,",",q,")", sep="")))
   }
 }
+# Model Summary Aggregation
+sink(file="Latex/Summary_Standard_GARCH.txt")
+texreg(summaries_standard)
+sink(file = NULL)
 
 ## Standard GARCHs - Best Model
 aics_standard <- as.data.frame(aics_standard)
@@ -336,6 +339,7 @@ models_special <- c()
 model_types <- c("TGARCH", "GJRGARCH")
 aics_special <- matrix(0,9,5)
 colnames(aics_special) <- c("p","q","AIC","BIC","HQ")
+summaries_special <- c()
 k <- 1
 for (model_type in model_types) {
   # Model Fit
@@ -352,7 +356,7 @@ for (model_type in model_types) {
     plot(model, which = i)
   }
   dev.off()
-  # AIC Information Criterion
+  # Information Criteria
   aic <- infocriteria(model)[1]
   bic <- infocriteria(model)[2]
   hq <- infocriteria(model)[4]
@@ -369,10 +373,12 @@ for (model_type in model_types) {
   acf(res^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
   dev.off()
   # Model Summary
-  sink(file = paste("Latex/Summary_",model_type,"_",best_orders[[1]],"_",best_orders[[2]],".txt", sep=""))
-  print(texreg(summary.rugarch(model=model, modelname=paste(model_type,"(",best_orders[[1]],",",best_orders[[2]],")", sep=""))))
-  sink(file = NULL)
+  summaries_special <- c(summaries_special, summary.rugarch(model=model, modelname=paste(model_type,"(",best_orders[[1]],",",best_orders[[2]],")", sep="")))
 }
+# Model Summary Aggregation
+sink(file="Latex/Summary_Special_GARCH.txt")
+texreg(summaries_special)
+sink(file = NULL)
 
 ## Special GARCHs - Best Model
 aics_special <- as.data.frame(aics_special)

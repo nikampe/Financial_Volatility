@@ -290,7 +290,7 @@ for (p in 1:p_max) {
   for(q in 1:q_max) {
     # Model Fit
     spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder=c(p,q)), distribution.model="sstd")
-    model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*length(xtrack_returns)))
+    model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
     fit <- model@fit$sigma
     res <- model@fit$residuals
     models_standard <- c(models_standard, model)
@@ -340,7 +340,7 @@ k <- 1
 for (model_type in model_types) {
   # Model Fit
   spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]]), submodel=model_type), distribution.model="sstd")
-  model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*length(xtrack_returns)))
+  model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
   fit <- model@fit$sigma
   res <- model@fit$residuals
   models_special <- c(models_special, model)
@@ -378,17 +378,16 @@ for (model_type in model_types) {
 aics_special <- as.data.frame(aics_special)
 
 # 3.3.2.3 Realized Volatility: HAR Model ---------------------------------------
-## h=1
-rv_daily <- rv_weekly <- rv_monthly <- c() # TBD!!!!!!
-for (i in 22:nrow(train)) {
-  rv_daily <- c(rv_daily, train[i,"High"] - train[i,"Low"])
-  rv_weekly <- c(rv_weekly, max(train[(i-5):(i-1),"High"]) - min(train[(i-5):(i-1),"Low"]))
-  rv_monthly <- c(rv_monthly, max(train[(i-21):(i-1),"High"]) - min(train[(i-21):(i-1),"Low"]))
+rv_d <- rv_w <- rv_m <- c()
+for (i in 22:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])) {
+  rv_d <- c(rv_d, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"])
+  rv_w <- c(rv_w, max(xtrackers_msci[(i-5):(i-1),"High"]) / min(xtrackers_msci[(i-5):(i-1),"Low"]))
+  rv_m <- c(rv_m, max(xtrackers_msci[(i-21):(i-1),"High"]) / min(xtrackers_msci[(i-21):(i-1),"Low"]))
 }
-rv_daily <- rv_daily[-length(rv_daily)]
-rv_weekly <- rv_weekly[-length(rv_weekly)]
-rv_monthly <- rv_monthly[-length(rv_monthly)]
-har <- lm(train_returns[23:length(train_returns)] ~ rv_daily + rv_weekly + rv_monthly)
+rv_d <- rv_d[-length(rv_d)]
+rv_w <- rv_w[-length(rv_w)]
+rv_m <- rv_m[-length(rv_m)]
+har <- lm(train_returns[22:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])] ~ rv_d + rv_w + rv_m)
 har_coef <- har$coefficients
 summary(har)
 

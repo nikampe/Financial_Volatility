@@ -362,7 +362,7 @@ for (model_type in model_types) {
   pdf(paste("Figures/Analysis_Residuals_",model_type,"_",p,"_",q,".pdf", sep="")) 
   layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
   plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], abs(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]), type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
-  plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], fit, type="l", col="red", main=paste(model_type," (",p,",",q,") | Estimation of Conditional Volatility", sep=""), xlab="Time", ylab="Cond. Volatility")
+  plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], fit, type="l", col="red", main=paste(model_type," (",p,",",q,") | Estimation of Conditional Volatility", sep=""), xlab="Time", ylab="Cond. Volatility", ylim=c(0,4.5))
   plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], res, type="l", main="Residuals", xlab="Time", ylab="Residual")
   hist(res, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
   qqnorm(res, main="QQ-Plot | Residuals")

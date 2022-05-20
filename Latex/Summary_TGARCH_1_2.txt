@@ -1,0 +1,39 @@
+
+\begin{table}
+\begin{center}
+\begin{tabular}{l c}
+\hline
+ & TGARCH(1,2) \\
+\hline
+mu             & $0.03$        \\
+               & $(0.02)$      \\
+ar1            & $0.60^{***}$  \\
+               & $(0.05)$      \\
+ma1            & $-0.62^{***}$ \\
+               & $(0.05)$      \\
+omega          & $0.05^{***}$  \\
+               & $(0.01)$      \\
+alpha1         & $0.14^{***}$  \\
+               & $(0.03)$      \\
+beta1          & $0.38^{**}$   \\
+               & $(0.14)$      \\
+beta2          & $0.45^{***}$  \\
+               & $(0.13)$      \\
+eta11          & $1.00^{***}$  \\
+               & $(0.17)$      \\
+skew           & $0.87^{***}$  \\
+               & $(0.03)$      \\
+shape          & $6.08^{***}$  \\
+               & $(0.94)$      \\
+\hline
+Log Likelihood & $-1624.02$    \\
+AIC            & $2.39$        \\
+BIC            & $2.43$        \\
+HQ             & $2.40$        \\
+\hline
+\multicolumn{2}{l}{\scriptsize{$^{***}p<0.001$; $^{**}p<0.01$; $^{*}p<0.05$}}
+\end{tabular}
+\caption{Statistical models}
+\label{table:coefficients}
+\end{center}
+\end{table}

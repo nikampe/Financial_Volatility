@@ -329,7 +329,7 @@ for (p in 1:p_max) {
 aics_standard <- as.data.frame(aics_standard)
 best_orders <- aics_standard[which.min(aics_standard$AIC), c("p", "q")]
 spec_best <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]])), distribution.model="sstd")
-best_standard_garch <- ugarchfit(spec=spec, data=train_returns)
+best_standard_garch <- ugarchfit(spec=spec_best, data=xtrack_returns, out.sample=floor(0.3*length(xtrack_returns)))
 
 # 3.3.2.2 Special GARCH Models ------------------------------------------------
 models_special <- c()

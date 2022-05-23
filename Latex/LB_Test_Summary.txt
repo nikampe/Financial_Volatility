@@ -1,0 +1,13 @@
+% latex table generated in R 4.0.3 by xtable 1.8-4 package
+% Mon May 23 22:33:06 2022
+\begin{table}[ht]
+\centering
+\begin{tabular}{rrrrrrrr}
+  \hline
+ & Q=1 & Q=3 & Q=5 & Q=7 & Q=10 & Q=15 & Q=20 \\ 
+  \hline
+Ljung-Box Statistic & 7.51 & 16.79 & 17.52 & 32.43 & 36.23 & 44.81 & 54.25 \\ 
+  p-value & 0.01 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\ 
+   \hline
+\end{tabular}
+\end{table}

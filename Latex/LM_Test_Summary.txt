@@ -2,11 +2,13 @@
 % Mon May 23 22:33:06 2022
 \begin{table}[ht]
 \centering
-\begin{tabular}{rrrrrrr}
+\begin{tabular}{rl}
   \hline
- & SB (h=1) & SB (h=5) & NSB (h=1) & NSB (h=5) & PSB (h=1) & PSB (h=5) \\ 
+ & LM Test \\ 
   \hline
-XDWD & 47.10 & 6.34 & -1.41 & -0.47 & 0.08 & 0.37 \\ 
+LM Statistic & 6244.548198 \\ 
+  p-value & 0 \\ 
+  Result & Conclusion: y is heteroscedastic \\ 
    \hline
 \end{tabular}
 \end{table}

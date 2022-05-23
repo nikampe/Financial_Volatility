@@ -98,17 +98,7 @@ sink(file = NULL)
 
 # 3.1 Check for stylized facts of the time series --------------------------------
 
-# 3.1.1 Check for autocorrelation for different lags: Ljung-Box Test -------------
-for (i in c(1,3,5,7)) {
-  stat <- Box.test(xtrack_returns, lag=i, type="Ljung") 
-  print(stat$p.value) # -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of autocorrelation for given lag
-} # --> INSIGHT: We have significant autocorrelations for the lags tested
-
-# 3.1.2 Check for (G)ARCH effects: LM (Lagrange Multiplier) Test -----------------
-Lm.test(xtrack_returns, lag.max = 5, alpha = 0.05) # -> p-value < 0.01 (or 0.05, 0.1) rejects null hypothesis of homoskedasticity for a maximum lag of 5
-# --> INSIGHT: our log returns are, as expected, heteroskedastic for a lag of up to 5 time steps
-
-# 3.1.3 Check for asymmetries and tail distributions: Histogram & Statistics -----
+# 3.1.1 Test of Stylized Facts: Distribution, Moments, T-Test, JB Test -----------
 binwidth <- 0.2
 pdf("Figures/Histogram_Returns.pdf") 
 ggplot(xtrackers_msci, aes(x=log_returns)) +
@@ -125,15 +115,38 @@ ggplot(xtrackers_msci, aes(x=log_returns)) +
   theme(panel.grid.minor = element_blank()) # --> INSIGHT: Approximately zero mean, Fat tails --> Further diagnositcs below
 dev.off()
 
-# 3.1.4 Test for additional distribution properties: Moments, T-Test, JB Test ---- 
 t.test(xtrack_returns) # --> INSIGHT: Zero mean with 95% confidence
 normalTest(xtrack_returns, method = "jb") # --> INSIGHT: Not normaly distirbuted
 skewness(xtrackers_msci$log_returns, na.rm=TRUE) # --> INSIGHT: Slightly negatively skewed
 kurtosis(xtrackers_msci$log_returns, na.rm=TRUE) # --> INSIGHT: Fat/Heavy tails (interesting, note to self)
 
-# 3.1.5 Check for asymmetries & leverage effect: ---------------------------------
+# 3.1.1 Check for autocorrelation for different lags: Ljung-Box Test -------------
+lb_lags <- c(1,3,5,7,10,15,20)
+lb_test_summary <- data.frame(row.names=c("Ljung-Box Statistic", "p-value"))
+for (i in 1:length(lb_lags)) {
+  lb_test <- Box.test(xtrack_returns, lag=lb_lags[i], type="Ljung") 
+  lb_test_summary[1,i] <- round(lb_test$statistic, digits=6)
+  lb_test_summary[2,i] <- round(lb_test$p.value, digits=6)
+}
+colnames(lb_test_summary) <- c("Q=1","Q=3","Q=5","Q=7","Q=10","Q=15","Q=20")
+sink(file = "Latex/LB_Test_Summary.txt")
+xtable(lb_test_summary)
+sink(file = NULL) 
 
-# 3.1.5.1 Leverage Effect: Autocorrelations --------------------------------------
+# 3.1.2 Check for (G)ARCH effects: LM (Lagrange Multiplier) Test -----------------
+lm_test_summary <- data.frame(row.names=c("LM Statistic", "p-value", "Result"))
+lm_test <- Lm.test(xtrack_returns, lag.max = 5, alpha = 0.05) 
+lm_test_summary[1,1] <- round(lm_test$statistic, digits=6)
+lm_test_summary[2,1] <- round(lm_test$p.value, digits=6)
+lm_test_summary[3,1] <- lm_test$Conc
+colnames(lm_test_summary) <- c("LM Test")
+sink(file = "Latex/LM_Test_Summary.txt")
+xtable(lm_test_summary)
+sink(file = NULL) 
+
+# 3.1.3 Check for asymmetries & leverage effect: ---------------------------------
+
+# 3.1.3.1 Leverage Effect: Autocorrelations --------------------------------------
 a <- c()
 c <- c()
 for (i in 1:length(xtrack_returns))  {
@@ -153,7 +166,7 @@ sink(file = "Latex/Table_Leverage_Effect_autocorr.txt")
 xtable(cor_summary) # --> INISGHT: Leverage effect given (negative autocorrelations)
 sink(file = NULL)
 
-## 3.1.5.2 Asymmetry: Test Regression --------------------------------------------
+## 3.1.3.2 Asymmetry: Test Regression --------------------------------------------
 h_arr <- c(1,5)
 sign_bias_coefs <- c()
 neg_size_bias_coefs <- c()
@@ -283,32 +296,32 @@ summary.rugarch <- function(model, modelname, include.loglike = TRUE, include.ai
 
 # 3.3.2.1 Standard GARCH Models ------------------------------------------------
 models_standard <- c()
-aics_standard <- matrix(0,9,5)
-colnames(aics_standard) <- c("p","q","AIC","BIC","HQ")
+ics_standard <- matrix(0,9,6)
+colnames(ics_standard) <- c("p","q","LLH","AIC","BIC","HQ")
 summaries_standard <- c()
 k <- 1
 for (p in 1:p_max) {
   for(q in 1:q_max) {
     # Model Fit
     spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder=c(p,q)), distribution.model="sstd")
-    model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
+    model <- ugarchfit(spec=spec, data=xtrack_returns, include.mean=FALSE, out.sample=floor(0.3*nrow(xtrackers_msci)))
     fit <- model@fit$sigma
     res <- model@fit$residuals
     models_standard <- c(models_standard, model)
     # Plots
     indices <- c(1,2,3,8,9,10,11,12)
     pdf(paste("Figures/Summary_Plots_GARCH_",p,"_",q,".pdf", sep="")) 
-    par(mfrow = c(4,2))
+    par(mfrow = c(2,4))
     for (i in indices) {
       plot(model, which=i)
     }
     dev.off()
-    # Information Criteria
+    # Log-Likelihood & Information Criteria
+    llh <- model@fit$LLH
     aic <- infocriteria(model)[1]
     bic <- infocriteria(model)[2]
     hq <- infocriteria(model)[4]
-    aics_standard[k,] <- c(p,q,aic,bic,hq)
-    k <- k+1
+    ics_standard[k,] <- c(p,q,llh,aic,bic,hq)
     # Plot & Residual Analysis
     pdf(paste("Figures/Analysis_Residuals_GARCH_",p,"_",q,".pdf", sep="")) 
     layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
@@ -321,6 +334,7 @@ for (p in 1:p_max) {
     dev.off()
     # Model Summary
     summaries_standard <- c(summaries_standard, summary.rugarch(model=model, modelname=paste("GARCH(",p,",",q,")", sep="")))
+    k <- k+1
   }
 }
 # Model Summary Aggregation
@@ -329,21 +343,26 @@ texreg(summaries_standard)
 sink(file = NULL)
 
 ## Standard GARCHs - Best Model
-aics_standard <- as.data.frame(aics_standard)
-best_orders <- aics_standard[which.min(aics_standard$AIC), c("p", "q")]
+ics_standard <- as.data.frame(ics_standard)
+best_orders <- ics_standard[which.min(ics_standard$LLH), c("p", "q")]
 spec_best <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]])), distribution.model="sstd")
 best_standard_garch <- ugarchfit(spec=spec_best, data=xtrack_returns, out.sample=floor(0.3*length(xtrack_returns)))
 
 # 3.3.2.2 Special GARCH Models ------------------------------------------------
 models_special <- c()
-model_types <- c("TGARCH", "GJRGARCH")
-aics_special <- matrix(0,9,5)
-colnames(aics_special) <- c("p","q","AIC","BIC","HQ")
+model_types <- c("TGARCH", "eGARCH")
+model_names_summary <- c("T-GARCH", "E-GARCH")
+ics_special <- matrix(0,9,6)
+colnames(ics_special) <- c("p","q","LLH","AIC","BIC","HQ")
 summaries_special <- c()
 k <- 1
 for (model_type in model_types) {
   # Model Fit
-  spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]]), submodel=model_type), distribution.model="sstd")
+  if (model_type == "eGARCH") {
+    spec <- ugarchspec(variance.model=list(model=model_type, garchOrder=c(best_orders[[1]],best_orders[[2]]), submodel=NULL), mean.model=list(armaOrder=c(0,0), include.mean=FALSE), distribution.model="sstd")
+  } else {
+    spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]]), submodel=model_type), mean.model=list(armaOrder=c(0,0), include.mean=FALSE), distribution.model="sstd")
+  }
   model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
   fit <- model@fit$sigma
   res <- model@fit$residuals
@@ -356,12 +375,12 @@ for (model_type in model_types) {
     plot(model, which = i)
   }
   dev.off()
-  # Information Criteria
+  # Log-Likelihood & Information Criteria
+  llh <- model@fit$LLH
   aic <- infocriteria(model)[1]
   bic <- infocriteria(model)[2]
   hq <- infocriteria(model)[4]
-  aics_special[k,] <- c(p,q,aic,bic,hq)
-  k <- k+1
+  ics_special[k,] <- c(p,q,llh,aic,bic,hq)
   # Plot & Residual Analysis
   pdf(paste("Figures/Analysis_Residuals_",model_type,"_",p,"_",q,".pdf", sep="")) 
   layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
@@ -373,7 +392,8 @@ for (model_type in model_types) {
   acf(res^2, lag.max=max_lags, main="ACF | Squared Residuals", ylim=range(-1,1))
   dev.off()
   # Model Summary
-  summaries_special <- c(summaries_special, summary.rugarch(model=model, modelname=paste(model_type,"(",best_orders[[1]],",",best_orders[[2]],")", sep="")))
+  summaries_special <- c(summaries_special, summary.rugarch(model=model, modelname=paste(model_names_summary[k],"(",best_orders[[1]],",",best_orders[[2]],")", sep="")))
+  k <- k+1
 }
 # Model Summary Aggregation
 sink(file="Latex/Summary_Special_GARCH.txt")
@@ -381,7 +401,7 @@ texreg(summaries_special)
 sink(file = NULL)
 
 ## Special GARCHs - Best Model
-aics_special <- as.data.frame(aics_special)
+ics_special <- as.data.frame(ics_special)
 
 # 3.3.2.3 Realized Volatility: HAR Model ---------------------------------------
 ## Dependent Variable
@@ -415,7 +435,7 @@ har <- lm(rv_d_h ~ rv_d + rv_w + rv_m)
 har_coef <- har$coefficients
 # Model Summary
 sink(file="Latex/Summary_HAR.txt")
-summary(har)
+texreg(summary(har))
 sink(file = NULL)
 
 #################################################################################

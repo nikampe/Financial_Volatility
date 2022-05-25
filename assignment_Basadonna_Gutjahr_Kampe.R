@@ -357,7 +357,7 @@ for (model_type in model_types) {
     spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]]), submodel=model_type), mean.model=list(armaOrder=c(0,0), include.mean=FALSE), distribution.model="sstd")
   }
   model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
-  forecast <- ugarchforecast(model, data=NULL, out.sample=floor(0.3*nrow(xtrackers_msci)), n.ahead = 1, n.roll = 585)
+  forecast <- ugarchforecast(model, data=NULL, out.sample=floor(0.3*nrow(xtrackers_msci)), n.ahead = 1, n.roll = 584)
   fit <- model@fit$sigma
   res <- model@fit$residuals
   models_special <- c(models_special, model)
@@ -438,13 +438,28 @@ summary(har)
 sink(file = NULL)
 
 
-#################################################################################
-# @ Niklas
-# -------------------------------------------------------------------------------
-# @ Jan
+
 
 
 # 4. Forecasting ----------------------------------------------------------
+
+#showing the training and test split in action
+
+train <- data.frame(x= xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])
+train <- data.frame(train, D = xtrackers_msci$Date[1:1368])
+test <- data.frame(y = xtrackers_msci$log_returns[(floor(0.7*nrow(xtrackers_msci))+2):1953])
+test <- data.frame(test, D = xtrackers_msci$Date[1369:1953])
+
+pdf("Figures/train_test_graph.pdf", width = 9, height = 4)
+ggplot() + 
+  geom_line(data = train, aes(x = D, y = x), color = "lightblue") +
+  geom_line(data = test, aes(x = D, y = y), color = "red") +
+  xlab('time') +
+  ylab('log returns') +
+  ggtitle("Training/Test Split across Time Series",
+          subtitle = "Start of test sample: January, 16th, 2020")
+dev.off()
+
 # 4.1 Actual realized volatilities for the test set -----------------------
 
 
@@ -525,11 +540,13 @@ for (x in 0:584) {
   
 }
 
-(max(forecasts_har)-1)*100
+forecasts_har
 length(forecasts_har)
 class(forecasts_har)
 
 forecasts_har_true_values_plot <- data.frame(x = xtrackers_msci$Date[1369:1953], y= (forecasts_har-1)*100, z = abs(xtrackers_msci$log_returns[1369:1953]))
+max(forecasts_har_true_values_plot$y)
+forecasts_har_true_values_plot
 
 #produce one plot of the forecasted RV against the true values
 pdf("Figures/har_forecast.pdf")
@@ -551,8 +568,6 @@ str(forecasts_garch)
 
 1:length(forecasts_garch)
 
-
-
 #line graphs for forecast accuary for every GARCH
 for (i in 1:length(forecasts_garch)) {
   
@@ -572,59 +587,70 @@ for (i in 1:length(forecasts_garch)) {
 
 
 
+
+
+
 # 5. Comparison of forecasts ----------------------------------------------
 
 # 5.1 compute performance summary and plots of GARCH models ---------------
 #performance summary
-performance_summary_forecasts <- data.frame(matrix(ncol = 11, nrow = 3)) #table of summary statistics
+performance_summary_forecasts <- data.frame(matrix(ncol = 13, nrow = 3)) #table of summary statistics
 
 length(forecasts_garch) #number of models
 
 length(as.vector(forecasts_garch[[1]]@forecast$sigmaFor)) #number of test observations from garch models
 length(forecasts_har) #number of test observations from HAR model
+length(abs(xtrackers_msci$log_returns[1369:1953]))
+
+length(as.vector(forecasts_garch[[11]]@forecast$sigmaFor))
 
 #perf summary and model plots for all GARCH models
 for (i in 1:length(forecasts_garch)) {
   
-  performance_summary_forecasts[1,i] <- mae(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
-  performance_summary_forecasts[2,i] <- mse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
-  performance_summary_forecasts[3,i] <- rmse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
-  
-  
+  performance_summary_forecasts[1,i] <- mae(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),abs(xtrackers_msci$log_returns[1369:1953]))
+  performance_summary_forecasts[2,i] <- mse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),abs(xtrackers_msci$log_returns[1369:1953]))
+  performance_summary_forecasts[3,i] <- rmse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),abs(xtrackers_msci$log_returns[1369:1953]))
   
 }
 
+performance_summary_forecasts[1,13] <- mae((forecasts_har-1)*100,abs(xtrackers_msci$log_returns[1369:1953]))
+performance_summary_forecasts[2,13] <- mse((forecasts_har-1)*100,abs(xtrackers_msci$log_returns[1369:1953]))
+performance_summary_forecasts[3,13] <- rmse((forecasts_har-1)*100,abs(xtrackers_msci$log_returns[1369:1953]))
+
+
 #tidying the data frame
-colnames(performance_summary_forecasts) <- c(1:11)
 rownames(performance_summary_forecasts) <- c("MAE", "MSE", "RMSE")
+colnames(performance_summary_forecasts) <- c("G(1,1)", "G(1,2)", "G(1,3)", "G(2,1)", "G(2,2)", "G(2,3)", "G(3,1)", "G(3,2)", "G(3,3)", "T-G(1,1)", "E-G(1,1)", "GJR-G(1,1)", "HAR")
 
 #report the performance summary in stargazer
-stargazer(performance_summary_forecasts, summary = F, column.sep.width	= "1pt", type = "latex", title = "Performance Statistics of all models versus the HAR estimate")
+stargazer(performance_summary_forecasts, summary = F, column.sep.width	= "1pt",
+          type = "latex", title = "Performance Statistics of all models versus the HAR estimate",
+          font.size = "normalsize")
 
 # 5.2 select best models and plot their forecasts against the one from RV (incl. real values) ------
 
-forecasts_garch_har_true_values_plot_1 <- data.frame(forecasts_garch_true_values_plot, y= forecasts_garch[[1]]@forecast$sigmaFor[1:585], a = (forecasts_har-1)*100)
-forecasts_garch_har_true_values_plot_10 <- data.frame(forecasts_garch_true_values_plot, y= forecasts_garch[[10]]@forecast$sigmaFor[1:585], a = (forecasts_har-1)*100)
+forecasts_garch_har_true_values_plot_1 <- data.frame(x = xtrackers_msci$Date[1369:1953], z= forecasts_garch[[1]]@forecast$sigmaFor[1:585], y = (forecasts_har-1)*100, t = abs(xtrackers_msci$log_returns[1369:1953]))
+forecasts_garch_har_true_values_plot_12 <- data.frame(x = xtrackers_msci$Date[1369:1953], z= forecasts_garch[[12]]@forecast$sigmaFor[1:585], y = (forecasts_har-1)*100, t = abs(xtrackers_msci$log_returns[1369:1953]))
 
 pdf(paste("Figures/har_garch_comparison.pdf", sep=""))
-plot1 <- ggplot(forecasts_garch_har_true_values_plot_1, aes(x,y,z, color = variable)) +
-        geom_line(aes(y = z,  color =c("True values"))) +
-        geom_line(aes(y = y, color = c("GARCH Forecast"))) +
-        geom_line(aes(y = a, color = c("HAR Forecast"))) +
-        ggtitle(paste("GARCH Model", 1, "forecast vs. true Sigma")) +
+plot1 <- ggplot(forecasts_garch_har_true_values_plot_1, aes(x,y,z,t, color = variable)) +
+        geom_line(aes(y = t, x = x, color =c("Absolute Log Returns"))) +
+        geom_line(aes(y = z, x = x, color = c("GARCH Forecast"))) +
+        geom_line(aes(y = y, x = x, color = c("HAR Forecast"))) +
+        ggtitle("GARCH (1,1) model forecast vs HAR model forecast") +
         ylab("Sigma") +
         xlab("Time") +
         labs(color="Legend") +
-        scale_color_manual(values = c("red", "blue","grey"))
-plot2 <- ggplot(forecasts_garch_har_true_values_plot_10, aes(x,y,z, color = variable)) +
-  geom_line(aes(y = z,  color =c("True values"))) +
-  geom_line(aes(y = y, color = c("GARCH Forecast"))) +
-  geom_line(aes(y = a, color = c("HAR Forecast"))) +
-  ggtitle(paste("GARCH Model", 1, "forecast vs. true Sigma")) +
+        scale_color_manual(values = c("grey", "red","darkgreen"))
+plot2 <- ggplot(forecasts_garch_har_true_values_plot_10, aes(x,y,z,t, color = variable)) +
+  geom_line(aes(y = t, x = x, color =c("Absolute Log Returns"))) +
+  geom_line(aes(y = z, x = x, color = c("GJR GARCH Forecast"))) +
+  geom_line(aes(y = y, x = x, color = c("HAR Forecast"))) +
+  ggtitle("GJR-GARCH (1,1) model forecast vs HAR model forecast") +
   ylab("Sigma") +
   xlab("Time") +
   labs(color="Legend") +
-  scale_color_manual(values = c("red", "blue","grey"))
+  scale_color_manual(values = c("grey", "red","darkgreen"))
 grid.arrange(plot1, plot2, nrow = 2)
 dev.off()
 
@@ -655,21 +681,3 @@ ggplot(forecasts_har_true_values_plot, aes(x,y,z)) +
 #   plot(model, which = i)
 # }
 # dev.off()
-
-
-
-# 6 Appendix --------------------------------------------------------------
-
-# First and Second differences of log returns
-par(mfrow=c(2,1))
-xtrack_returns_fd <- ts(xtrackers_msci[2:1954,8]-xtrackers_msci[1:1953,8])
-ts.plot(xtrack_returns_fd, main="1st Differences | Log Returns", ylab = "1st Difference")
-xtrack_returns_sd <- ts(xtrackers_msci[3:1954,8]-2*xtrackers_msci[2:1953,8] + xtrackers_msci[1:1952,8])
-ts.plot(xtrack_returns_sd, main="2nd Differences | Log Returns", ylab = "2nd Difference")
-
-# ACF and PACF of First and Second differences of log returns
-par(mfrow=c(2,2))
-acf(xtrack_returns_fd, lag.max=30, main="ACF | 1st Differences | Log Returns")
-pacf(xtrack_returns_fd, lag.max=30, main="PACF | 1st Differences | Log Returns")
-acf(xtrack_returns_sd, lag.max=30, main="ACF | 2nd Differences | Log Returns")
-pacf(xtrack_returns_sd, lag.max=30, main="PACF | 2nd Differences | Log Returns")

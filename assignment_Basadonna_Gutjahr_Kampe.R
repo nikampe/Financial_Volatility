@@ -31,6 +31,10 @@ library(modelsummary)
 library(xtable)
 library(texreg)
 library(rugarch)
+library(Metrics)
+library(highfrequency)
+library(xts)
+library(Rcpp)
 options("modelsummary_format_numeric_latex" = "plain")
 
 # Working directory
@@ -218,17 +222,6 @@ acf_table <- data.frame(ACF_Returns = acf_returns,
 
 # 3.3 Model Fit of GARCH -------------------------------------------------------
 
-# 3.3.1 Plot of training sample (pre-Covid) ------------------------------------
-pdf("Figures/Plot_Training_Sample.pdf") 
-ggplot(train, aes(x=xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], y=xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])) +
-  geom_line() + 
-  labs(title = "Training Sample - Log Returns", 
-       subtitle = "Xtrackers MSCI World UCITS ETF | 08/2014 - 01/2020", 
-       x = "Time",
-       y = "log returns") +
-  theme(panel.grid.minor = element_blank())
-dev.off()
-
 # 3.3.2 Model fit & Determination of model parameters --------------------------
 
 ## Global Model Fit Variables
@@ -286,15 +279,19 @@ models_standard <- c()
 aics_standard <- matrix(0,9,5)
 colnames(aics_standard) <- c("p","q","AIC","BIC","HQ")
 summaries_standard <- c()
+forecasts_standard <- c()
+
 k <- 1
 for (p in 1:p_max) {
   for(q in 1:q_max) {
     # Model Fit
     spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder=c(p,q)), distribution.model="sstd")
     model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
+    forecast <- ugarchforecast(model, data=NULL, out.sample=floor(0.3*nrow(xtrackers_msci)), n.ahead = 1, n.roll = 584)
     fit <- model@fit$sigma
     res <- model@fit$residuals
     models_standard <- c(models_standard, model)
+    forecasts_standard <- c(forecasts_standard, forecast)
     # Plots
     indices <- c(1,2,3,8,9,10,11,12)
     pdf(paste("Figures/Summary_Plots_GARCH_",p,"_",q,".pdf", sep="")) 
@@ -340,14 +337,17 @@ model_types <- c("TGARCH", "GJRGARCH")
 aics_special <- matrix(0,9,5)
 colnames(aics_special) <- c("p","q","AIC","BIC","HQ")
 summaries_special <- c()
+forecasts_special <- c()
 k <- 1
 for (model_type in model_types) {
   # Model Fit
   spec <- ugarchspec(variance.model=list(model="fGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]]), submodel=model_type), distribution.model="sstd")
   model <- ugarchfit(spec=spec, data=xtrack_returns, out.sample=floor(0.3*nrow(xtrackers_msci)))
+  forecast <- ugarchforecast(model, data=NULL, out.sample=floor(0.3*nrow(xtrackers_msci)), n.ahead = 1, n.roll = 585)
   fit <- model@fit$sigma
   res <- model@fit$residuals
   models_special <- c(models_special, model)
+  forecasts_special <- c(forecasts_special,forecast)
   # Plots
   indices <- c(1,2,3,8,9,10,11,12)
   pdf(paste("Figures/Summary_Plots_",model_type,"_",p,"_",q,".pdf", sep="")) 
@@ -405,11 +405,13 @@ for (i in 22:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci)
   for (k in 1:21) {
     rv_m_temp <- c(rv_m_temp, xtrackers_msci[i-k-1,"High"] / xtrackers_msci[i-k-1,"Low"])
   }
-  rv_m <- c(rv_m, sum(rv_m_temp)/length(rv_m_temp)) 
+  rv_m <- c(rv_m, sum(rv_m_temp)/length(rv_m_temp))
 }
+
 rv_d <- rv_d[-length(rv_d)]
 rv_w <- rv_w[-length(rv_w)]
 rv_m <- rv_m[-length(rv_m)]
+
 ## Regression with 1-lag 
 har <- lm(rv_d_h ~ rv_d + rv_w + rv_m)
 har_coef <- har$coefficients
@@ -418,43 +420,177 @@ sink(file="Latex/Summary_HAR.txt")
 summary(har)
 sink(file = NULL)
 
+
 #################################################################################
 # @ Niklas
 # -------------------------------------------------------------------------------
 # @ Jan
-#################################################################################
 
-# 4 Model Forecast of GARCH ----------------------------------------------------
 
-# 4.1 Define Forecast Horizons -------------------------------------------------
-n_arr <- c() # TBD!!!!!!
-for (i in c(0.25, 0.5, 0.75, 1)) {
-  n <- floor(i*length(test_returns))
-  n_arr <- c(n_arr, n)
+# 4. Forecasting ----------------------------------------------------------
+
+
+
+# 4.1 Actual realized volatilities for the test set -----------------------
+
+
+#index f on the dataframes indicates "full"
+rv_d_f <- rv_w_f <- rv_m_f <- c()
+for (i in 22:length(xtrackers_msci$log_returns)) {
+  # Daily Realized Variance
+  rv_d_f <- c(rv_d_f, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"]) 
+  # Weekly Average of Daily Realized Variance
+  rv_w_temp <- c()
+  for (j in 1:5) {
+    rv_w_temp <- c(rv_w_temp, xtrackers_msci[i-j-1,"High"] / xtrackers_msci[i-j-1,"Low"])
+  }
+  rv_w_f <- c(rv_w_f, sum(rv_w_temp)/length(rv_w_temp))
+  # Weekly Average of Daily Realized Variance
+  rv_m_temp <- c()
+  for (k in 1:21) {
+    rv_m_temp <- c(rv_m_temp, xtrackers_msci[i-k-1,"High"] / xtrackers_msci[i-k-1,"Low"])
+  }
+  rv_m_f <- c(rv_m_f, sum(rv_m_temp)/length(rv_m_temp))
 }
 
-# 4.2 Model Forecasts of Best GARCH and RV -------------------------------------
-
-## Realized Volatility (RV): HAR Model
-
-## GARCH(1,1)
-m1_forecast <- predict(m1, newdata=test_returns)
+rv_d_f <- rv_d_f[-length(rv_d)]
+rv_w_f <- rv_w_f[-length(rv_w)]
+rv_m_f <- rv_m_f[-length(rv_m)]
 
 
-# 5 Model Forecast Comparison with Realized Volatility (RV) ----------------------
+# 4.2 Forecasts HAR -------------------------------------------------------
+forecasts_har <- c()
+for (x in 0:584) {
+  
+  #prediction for 69 w/ data from 68
+  pred_new <- predict(har, data.frame(rv_d = rv_d_f[floor(0.7*nrow(xtrackers_msci))+1+x-22],rv_w = rv_w_f[floor(0.7*nrow(xtrackers_msci))+1+x-22], rv_m = rv_m_f[floor(0.7*nrow(xtrackers_msci))+1+x-22]))
+  forecasts_har <- c(forecasts_har,pred_new)
+  
+  
+  #HIER und dann sollte die 70. prediction correct berechnet werden
+  
+  
+  #was brauch ich neues
+  #neue vekoten fpr die unabhängigen, wo kommen die her
+  
+  
+  #Dependent Variable
+  # rv_d_h <- c()
+  # for (i in 23:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]+x)) {
+  #   rv_d_h <- c(rv_d_h, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"])
+  #   
+  # }
+  
+  ## Independent Variables
+  # rv_d <- rv_w <- rv_m <- c()
+  # for (i in 22:length(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)])+x) {
+  #   # Daily Realized Variance
+  #   rv_d <- c(rv_d, xtrackers_msci[i,"High"] / xtrackers_msci[i,"Low"]) 
+  #   # Weekly Average of Daily Realized Variance
+  #   rv_w_temp <- c()
+  #   for (j in 1:5) {
+  #     rv_w_temp <- c(rv_w_temp, xtrackers_msci[i-j,"High"] / xtrackers_msci[i-j,"Low"])
+  #   }
+  #   rv_w <- c(rv_w, sum(rv_w_temp)/length(rv_w_temp))
+  #   # Weekly Average of Daily Realized Variance
+  #   rv_m_temp <- c()
+  #   for (k in 1:21) {
+  #     rv_m_temp <- c(rv_m_temp, xtrackers_msci[i-k,"High"] / xtrackers_msci[i-k,"Low"])
+  #   }
+  #   rv_m <- c(rv_m, sum(rv_m_temp)/length(rv_m_temp))
+  #   
+  #   
+  # }
+  # 
+  # rv_d <- rv_d[-length(rv_d)]
+  # rv_w <- rv_w[-length(rv_w)]
+  # rv_m <- rv_m[-length(rv_m)]
+  # #neues modell --> das modell wird mit den neuen observations geupdated
+  # 
+  # har <- lm(rv_d_h ~ rv_d + rv_w + rv_m)
+  
+}
 
-# - Model Forecast Comparison with Realized Volatility (RV)
+forecasts_har
+length(forecasts_har)
+class(forecasts_har)
 
 
+# 4.3 forecasts garch -----------------------------------------------------
+## GARCH forecasts #we already created the predictions from our GARCH models when fitting the model (see above))
+forecasts_garch <- c(forecasts_standard, forecasts_special)
+str(forecasts_garch)
 
 
+# 5. Comparison of forecasts ----------------------------------------------
+# 5.1 compute performance summary and plots of GARCH models ---------------
+#performance summary
+performance_summary_forecasts <- data.frame(matrix(ncol = 11, nrow = 3)) #table of summary statistics
 
-# o Choose forecast horizon/lags n as before
-# o Calculate volatility forecasts by Realized Volatility (RV)
-#create function to compute RV
-real_vola <- sd(xtrack_returns) * sqrt(21)
+length(forecasts_garch) #number of models
 
-# o Compare RV forecast results with General GARCH and Special GARCH forecasts
+length(as.vector(forecasts_garch[[1]]@forecast$sigmaFor)) #number of test observations from garch models
+length(forecasts_har) #number of test observations from HAR model
+
+#perf summary and model plots for all GARCH models
+for (i in 1:length(forecasts_garch)) {
+  
+  performance_summary_forecasts[1,i] <- mae(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
+  performance_summary_forecasts[2,i] <- mse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
+  performance_summary_forecasts[3,i] <- rmse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
+  
+  pdf(paste("Figures/Sigma_garchmodel_",i,".pdf", sep=""))
+  plot(forecasts_garch[[1]], which = 4)
+  dev.off()
+  
+}
+
+forecasts_garch_true_values_plot <- data.frame(y= forecasts_garch[[1]]@forecast$sigmaFor[1:585], x = xtrackers_msci$Date[1369:1953], z = forecasts_garch[[1]]@model$modeldata$sigma[1369:1953])
+
+ggplot(forecasts_garch_true_values_plot, aes(x,y,z)) +
+  geom_line(aes(y = y, color ="Forecast")) +
+  geom_line(aes(y = z,  color ="True values")) +
+  ggtitle("HAR forecast vs. true Sigma") +
+  ylab("Sigma") +
+  xlab("Time") +
+  labs(color="Legend")
+
+#tidying the data frame
+colnames(performance_summary_forecasts) <- c(1:11)
+rownames(performance_summary_forecasts) <- c("MAE", "MSE", "RMSE")
+
+#report the performance summary in stargazer
+stargazer(performance_summary_forecasts, summary = F, column.sep.width	= "1pt", type = "latex", title = "Performance Statistics of all models versus the HAR estimate")
+
+
+# 5.2 HAR forecast plot ---------------------------------------------------
+
+#create data fram wit hHAR forecasts and true values
+forecasts_har_true_values_plot <- data.frame(y= (forecasts_har-1)*100, x = xtrackers_msci$Date[1369:1953], z = forecasts_garch[[1]]@model$modeldata$sigma[1369:1953])
+
+### FIND THE CORRECT Series ###
+
+#produce desired plots
+ggplot(forecasts_har_true_values_plot, aes(x,y,z)) +
+  geom_line(aes(y = y, color ="Forecast")) +
+  geom_line(aes(y = z,  color ="True values")) +
+  ggtitle("HAR forecast vs. true Sigma") +
+  ylab("Sigma") +
+  xlab("Time") +
+  labs(color="Legend")
+  
+
+
+#### TAKE THIS
+# indices <- c(1,2,3,8,9,10,11,12)
+# pdf(paste("Figures/Summary_Plots_",model_type,"_",p,"_",q,".pdf", sep="")) 
+# par(mfrow = c(4,2))
+# for (i in indices) {
+#   plot(model, which = i)
+# }
+# dev.off()
+
+
 
 # 6 Appendix --------------------------------------------------------------
 

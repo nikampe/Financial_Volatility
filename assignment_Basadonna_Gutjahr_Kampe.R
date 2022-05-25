@@ -35,6 +35,8 @@ library(Metrics)
 library(highfrequency)
 library(xts)
 library(Rcpp)
+library(lattice)
+library(gridExtra)
 options("modelsummary_format_numeric_latex" = "plain")
 
 # Working directory
@@ -356,6 +358,7 @@ for (model_type in model_types) {
     plot(model, which = i)
   }
   dev.off()
+  
   # Information Criteria
   aic <- infocriteria(model)[1]
   bic <- infocriteria(model)[2]
@@ -363,6 +366,7 @@ for (model_type in model_types) {
   aics_special[k,] <- c(p,q,aic,bic,hq)
   k <- k+1
   # Plot & Residual Analysis
+  
   pdf(paste("Figures/Analysis_Residuals_",model_type,"_",p,"_",q,".pdf", sep="")) 
   layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
   plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], abs(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]), type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
@@ -428,9 +432,6 @@ sink(file = NULL)
 
 
 # 4. Forecasting ----------------------------------------------------------
-
-
-
 # 4.1 Actual realized volatilities for the test set -----------------------
 
 
@@ -511,18 +512,55 @@ for (x in 0:584) {
   
 }
 
-forecasts_har
+(max(forecasts_har)-1)*100
 length(forecasts_har)
 class(forecasts_har)
 
+forecasts_har_true_values_plot <- data.frame(x = xtrackers_msci$Date[1369:1953], y= (forecasts_har-1)*100, z = abs(xtrackers_msci$log_returns[1369:1953]))
 
-# 4.3 forecasts garch -----------------------------------------------------
-## GARCH forecasts #we already created the predictions from our GARCH models when fitting the model (see above))
+#produce one plot of the forecasted RV against the true values
+pdf("Figures/har_forecast.pdf")
+ggplot(forecasts_har_true_values_plot, aes(x,y,z, color = variable)) +
+  geom_line(aes(y = z,  color =c("True values"))) +
+  geom_line(aes(y = y, color ="Forecast")) +
+  ggtitle("HAR forecast vs. true Sigma") +
+  ylab("Sigma") +
+  xlab("Time") +
+  labs(color="Legend") +
+  scale_color_manual(values = c("red", "grey"))
+dev.off()
+
+
+# 4.3 forecasts GARCH -----------------------------------------------------
+## GARCH forecasts we already created the predictions from our GARCH models when fitting the model (see above))
 forecasts_garch <- c(forecasts_standard, forecasts_special)
 str(forecasts_garch)
 
+1:length(forecasts_garch)
+
+
+
+#line graphs for forecast accuary for every GARCH
+for (i in 1:length(forecasts_garch)) {
+  
+  forecasts_garch_true_values_plot <- data.frame(x = xtrackers_msci$Date[1369:1953], y= forecasts_garch[[i]]@forecast$sigmaFor[1:585], z = abs(xtrackers_msci$log_returns[1369:1953]))
+  
+  pdf(paste("Figures/garch_forecast_",i,".pdf", sep=""))
+  print(ggplot(forecasts_garch_true_values_plot, aes(x,y,z, color = variable)) +
+    geom_line(aes(y = z,  color =c("True values"))) +
+    geom_line(aes(y = y, color ="Forecast")) +
+    ggtitle(paste("GARCH Model", i, "forecast vs. true Sigma")) +
+    ylab("Sigma") +
+    xlab("Time") +
+    labs(color="Legend") +
+    scale_color_manual(values = c("red", "grey")))
+  dev.off()
+}
+
+
 
 # 5. Comparison of forecasts ----------------------------------------------
+
 # 5.1 compute performance summary and plots of GARCH models ---------------
 #performance summary
 performance_summary_forecasts <- data.frame(matrix(ncol = 11, nrow = 3)) #table of summary statistics
@@ -539,21 +577,9 @@ for (i in 1:length(forecasts_garch)) {
   performance_summary_forecasts[2,i] <- mse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
   performance_summary_forecasts[3,i] <- rmse(as.vector(forecasts_garch[[i]]@forecast$sigmaFor),forecasts_har[i])
   
-  pdf(paste("Figures/Sigma_garchmodel_",i,".pdf", sep=""))
-  plot(forecasts_garch[[1]], which = 4)
-  dev.off()
+  
   
 }
-
-forecasts_garch_true_values_plot <- data.frame(y= forecasts_garch[[1]]@forecast$sigmaFor[1:585], x = xtrackers_msci$Date[1369:1953], z = forecasts_garch[[1]]@model$modeldata$sigma[1369:1953])
-
-ggplot(forecasts_garch_true_values_plot, aes(x,y,z)) +
-  geom_line(aes(y = y, color ="Forecast")) +
-  geom_line(aes(y = z,  color ="True values")) +
-  ggtitle("HAR forecast vs. true Sigma") +
-  ylab("Sigma") +
-  xlab("Time") +
-  labs(color="Legend")
 
 #tidying the data frame
 colnames(performance_summary_forecasts) <- c(1:11)
@@ -561,6 +587,33 @@ rownames(performance_summary_forecasts) <- c("MAE", "MSE", "RMSE")
 
 #report the performance summary in stargazer
 stargazer(performance_summary_forecasts, summary = F, column.sep.width	= "1pt", type = "latex", title = "Performance Statistics of all models versus the HAR estimate")
+
+# 5.2 select best models and plot their forecasts against the one from RV (incl. real values) ------
+
+forecasts_garch_har_true_values_plot_1 <- data.frame(forecasts_garch_true_values_plot, y= forecasts_garch[[1]]@forecast$sigmaFor[1:585], a = (forecasts_har-1)*100)
+forecasts_garch_har_true_values_plot_10 <- data.frame(forecasts_garch_true_values_plot, y= forecasts_garch[[10]]@forecast$sigmaFor[1:585], a = (forecasts_har-1)*100)
+
+pdf(paste("Figures/har_garch_comparison.pdf", sep=""))
+plot1 <- ggplot(forecasts_garch_har_true_values_plot_1, aes(x,y,z, color = variable)) +
+        geom_line(aes(y = z,  color =c("True values"))) +
+        geom_line(aes(y = y, color = c("GARCH Forecast"))) +
+        geom_line(aes(y = a, color = c("HAR Forecast"))) +
+        ggtitle(paste("GARCH Model", 1, "forecast vs. true Sigma")) +
+        ylab("Sigma") +
+        xlab("Time") +
+        labs(color="Legend") +
+        scale_color_manual(values = c("red", "blue","grey"))
+plot2 <- ggplot(forecasts_garch_har_true_values_plot_10, aes(x,y,z, color = variable)) +
+  geom_line(aes(y = z,  color =c("True values"))) +
+  geom_line(aes(y = y, color = c("GARCH Forecast"))) +
+  geom_line(aes(y = a, color = c("HAR Forecast"))) +
+  ggtitle(paste("GARCH Model", 1, "forecast vs. true Sigma")) +
+  ylab("Sigma") +
+  xlab("Time") +
+  labs(color="Legend") +
+  scale_color_manual(values = c("red", "blue","grey"))
+grid.arrange(plot1, plot2, nrow = 2)
+dev.off()
 
 
 # 5.2 HAR forecast plot ---------------------------------------------------

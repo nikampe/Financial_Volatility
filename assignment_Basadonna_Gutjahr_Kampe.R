@@ -335,7 +335,7 @@ for (p in 1:p_max) {
 }
 # Model Summary Aggregation
 sink(file="Latex/Summary_Standard_GARCH.txt")
-texreg(summaries_standard)
+texreg(summaries_standard, digits=4)
 sink(file = NULL)
 
 ## Standard GARCHs - Best Model
@@ -399,7 +399,7 @@ for (model_type in model_types) {
 }
 # Model Summary Aggregation
 sink(file="Latex/Summary_Special_GARCH.txt")
-texreg(summaries_special)
+texreg(summaries_special, digits=4)
 sink(file = NULL)
 
 ## Special GARCHs - Best Model
@@ -439,7 +439,7 @@ har <- lm(rv_d_h ~ rv_d + rv_w + rv_m)
 har_coef <- har$coefficients
 # Model Summary
 sink(file="Latex/Summary_HAR.txt")
-summary(har)
+texreg(summary(har, digits=4), digits=4)
 sink(file = NULL)
 
 

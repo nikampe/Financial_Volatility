@@ -31,6 +31,10 @@ library(modelsummary)
 library(xtable)
 library(texreg)
 library(rugarch)
+library(gridExtra)
+library(grid)
+library(lattice)
+library(Metrics)
 options("modelsummary_format_numeric_latex" = "plain")
 
 # Working directory
@@ -317,7 +321,7 @@ for (p in 1:p_max) {
     # Plot & Residual Analysis
     pdf(paste("Figures/Analysis_Residuals_GARCH_",p,"_",q,".pdf", sep="")) 
     layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
-    plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], abs(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]), type="l", col="blue", main="Absolute Log Return Series", xlab="Time", ylab="Return")
+    plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], abs(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]), type="l", col="blue", main="Absolute Log Return Series", xlab="Time", ylab="Abs. Return")
     plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], fit, type="l", col="red", main=paste("GARCH (",p,",",q,") | Estimation of Conditional Volatility", sep=""), xlab="Time", ylab="Cond. Volatility", ylim=c(0,4.5))
     plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], res, type="l", main="Residuals", xlab="Time", ylab="Residual")
     hist(res, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
@@ -336,11 +340,12 @@ sink(file = NULL)
 
 ## Standard GARCHs - Best Model
 ics_standard <- as.data.frame(ics_standard)
-best_orders <- ics_standard[which.min(ics_standard$LLH), c("p", "q")]
+best_orders <- ics_standard[which.min(ics_standard$AIC), c("p", "q")]
 spec_best <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder=c(best_orders[[1]],best_orders[[2]])), distribution.model="sstd")
 best_standard_garch <- ugarchfit(spec=spec_best, data=xtrack_returns, out.sample=floor(0.3*length(xtrack_returns)))
 
 # 3.3.2.2 Special GARCH Models ------------------------------------------------
+best_orders = c(1,2)
 models_special <- c()
 model_types <- c("TGARCH", "eGARCH", "GJRGARCH")
 model_names_summary <- c("T-GARCH", "E-GARCH", "GJR-GARCH")
@@ -364,7 +369,7 @@ for (model_type in model_types) {
   forecasts_special <- c(forecasts_special,forecast)
   # Plots
   indices <- c(1,2,3,8,9,10,11,12)
-  pdf(paste("Figures/Summary_Plots_",model_type,"_",p,"_",q,".pdf", sep="")) 
+  pdf(paste("Figures/Summary_Plots_",model_type,"_",best_orders[[1]],"_",best_orders[[2]],".pdf", sep="")) 
   par(mfrow = c(4,2))
   for (i in indices) {
     plot(model, which = i)
@@ -376,13 +381,13 @@ for (model_type in model_types) {
   aic <- infocriteria(model)[1]
   bic <- infocriteria(model)[2]
   hq <- infocriteria(model)[4]
-  ics_special[k,] <- c(p,q,llh,aic,bic,hq)
+  ics_special[k,] <- c(best_orders[[1]],best_orders[[2]],llh,aic,bic,hq)
   # Plot & Residual Analysis
   
-  pdf(paste("Figures/Analysis_Residuals_",model_type,"_",p,"_",q,".pdf", sep="")) 
+  pdf(paste("Figures/Analysis_Residuals_",model_type,"_",best_orders[[1]],"_",best_orders[[2]],".pdf", sep="")) 
   layout(matrix(c(1,1,2,2,3,4,5,6), nrow=4, ncol=2, byrow = TRUE))
-  plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], abs(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]), type="l", col="blue", main="Log Return Series", xlab="Time", ylab="Return")
-  plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], fit, type="l", col="red", main=paste(model_type," (",p,",",q,") | Estimation of Conditional Volatility", sep=""), xlab="Time", ylab="Cond. Volatility", ylim=c(0,4.5))
+  plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], abs(xtrackers_msci$log_returns[1:(floor(0.7*nrow(xtrackers_msci))+1)]), type="l", col="blue", main="Absolute Log Return Series", xlab="Time", ylab="Abs. Return")
+  plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], fit, type="l", col="red", main=paste(model_names_summary[k]," (",best_orders[[1]],",",best_orders[[2]],") | Estimation of Conditional Volatility", sep=""), xlab="Time", ylab="Cond. Volatility", ylim=c(0,4.5))
   plot(xtrackers_msci$Date[1:(floor(0.7*nrow(xtrackers_msci))+1)], res, type="l", main="Residuals", xlab="Time", ylab="Residual")
   hist(res, main="Histogram | Residuals", breaks = 20, xlab="Residual", ylab="Count")
   qqnorm(res, main="QQ-Plot | Residuals")
@@ -564,7 +569,6 @@ dev.off()
 # 4.3 forecasts GARCH -----------------------------------------------------
 ## GARCH forecasts we already created the predictions from our GARCH models when fitting the model (see above))
 forecasts_garch <- c(forecasts_standard, forecasts_special)
-str(forecasts_garch)
 
 1:length(forecasts_garch)
 
@@ -623,14 +627,16 @@ rownames(performance_summary_forecasts) <- c("MAE", "MSE", "RMSE")
 colnames(performance_summary_forecasts) <- c("G(1,1)", "G(1,2)", "G(1,3)", "G(2,1)", "G(2,2)", "G(2,3)", "G(3,1)", "G(3,2)", "G(3,3)", "T-G(1,1)", "E-G(1,1)", "GJR-G(1,1)", "HAR")
 
 #report the performance summary in stargazer
+sink(file="Latex/Forecast_Performance_Statistics.txt")
 stargazer(performance_summary_forecasts, summary = F, column.sep.width	= "1pt",
           type = "latex", title = "Performance Statistics of all models versus the HAR estimate",
           font.size = "normalsize")
+sink(file = NULL)
 
 # 5.2 select best models and plot their forecasts against the one from RV (incl. real values) ------
 
 forecasts_garch_har_true_values_plot_1 <- data.frame(x = xtrackers_msci$Date[1369:1953], z= forecasts_garch[[1]]@forecast$sigmaFor[1:585], y = (forecasts_har-1)*100, t = abs(xtrackers_msci$log_returns[1369:1953]))
-forecasts_garch_har_true_values_plot_12 <- data.frame(x = xtrackers_msci$Date[1369:1953], z= forecasts_garch[[12]]@forecast$sigmaFor[1:585], y = (forecasts_har-1)*100, t = abs(xtrackers_msci$log_returns[1369:1953]))
+forecasts_garch_har_true_values_plot_11 <- data.frame(x = xtrackers_msci$Date[1369:1953], z= forecasts_garch[[12]]@forecast$sigmaFor[1:585], y = (forecasts_har-1)*100, t = abs(xtrackers_msci$log_returns[1369:1953]))
 
 pdf(paste("Figures/har_garch_comparison.pdf", sep=""))
 plot1 <- ggplot(forecasts_garch_har_true_values_plot_1, aes(x,y,z,t, color = variable)) +
@@ -642,7 +648,7 @@ plot1 <- ggplot(forecasts_garch_har_true_values_plot_1, aes(x,y,z,t, color = var
         xlab("Time") +
         labs(color="Legend") +
         scale_color_manual(values = c("grey", "red","darkgreen"))
-plot2 <- ggplot(forecasts_garch_har_true_values_plot_10, aes(x,y,z,t, color = variable)) +
+plot2 <- ggplot(forecasts_garch_har_true_values_plot_11, aes(x,y,z,t, color = variable)) +
   geom_line(aes(y = t, x = x, color =c("Absolute Log Returns"))) +
   geom_line(aes(y = z, x = x, color = c("GJR GARCH Forecast"))) +
   geom_line(aes(y = y, x = x, color = c("HAR Forecast"))) +

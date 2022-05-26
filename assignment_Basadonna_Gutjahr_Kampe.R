@@ -498,7 +498,10 @@ rv_m_f <- rv_m_f[-length(rv_m)]
 # 4.2 Forecasts HAR -------------------------------------------------------
 forecasts_har <- c()
 for (x in 0:584) {
-  print(x)
+  if (x > 0){
+    print(paste("HAR Model refit no: ",x,"/584",sep = ""))
+    
+  } else {}
   #prediction for 69 w/ data from 68
   pred_new <- predict(har, data.frame(rv_d = rv_d_f[floor(0.7*nrow(xtrackers_msci))+1+x-22],rv_w = rv_w_f[floor(0.7*nrow(xtrackers_msci))+1+x-22], rv_m = rv_m_f[floor(0.7*nrow(xtrackers_msci))+1+x-22]))
   forecasts_har <- c(forecasts_har,pred_new)
@@ -532,13 +535,7 @@ for (x in 0:584) {
   har <- lm(rv_d_h ~ rv_d + rv_w + rv_m)
 }
 
-forecasts_har
-length(forecasts_har)
-class(forecasts_har)
-
 forecasts_har_true_values_plot <- data.frame(x = xtrackers_msci$Date[1369:1953], y= (forecasts_har-1)*100, z = abs(xtrackers_msci$log_returns[1369:1953]))
-max(forecasts_har_true_values_plot$y)
-forecasts_har_true_values_plot
 
 #produce one plot of the forecasted RV against the true values
 pdf("Figures/har_forecast.pdf")
@@ -556,8 +553,6 @@ dev.off()
 # 4.3 forecasts GARCH -----------------------------------------------------
 ## GARCH forecasts we already created the predictions from our GARCH models when fitting the model (see above))
 forecasts_garch <- c(forecasts_standard, forecasts_special)
-
-1:length(forecasts_garch)
 
 #line graphs for forecast accuary for every GARCH
 for (i in 1:length(forecasts_garch)) {
@@ -611,12 +606,12 @@ performance_summary_forecasts[2,6] <- rmse(((forecasts_har-1)*100)^2, xtrackers_
 rownames(performance_summary_forecasts) <- c("MSE", "RMSE")
 colnames(performance_summary_forecasts) <- c("G(1,1) (benchmark)", "G(1,2)", "T-G(1,2)", "E-G(1,2)", "GJR-G(1,2)", "HAR")
 
-performance_summary_forecasts
-
 #report the performance summary in stargazer
+sink(file = "Latex/performance_summary_GARCH.txt")
 stargazer(round(performance_summary_forecasts,4), summary = F, column.sep.width	= "1pt",
           type = "latex", title = "Performance Statistics of all models versus the HAR estimate",
           font.size = "normalsize")
+sink(file= NULL)
 
 # 5.2 select best models and plot their forecasts against the one from RV (incl. real values) ------
 
@@ -632,7 +627,7 @@ ggplot(forecasts_garch_har_true_values_plot, aes(color = variable)) +
   ylab("Sigma") +
   xlab("Time") +
   labs(color="Legend") +
-  scale_color_manual(values = line.col)
+  scale_color_manual(values = c("grey","green","red","black"))
 dev.off()
 
 
@@ -654,7 +649,7 @@ ggplot(forecasts_har_true_values_plot, aes(x,y,z)) +
   scale_color_manual(values = c("red", "grey"))
 
 
-# 5.3 Perofrmance comparison -----------------------------------------
+# 5.3 Performance comparison -----------------------------------------
 
 #create the regression for multiple models
 
@@ -668,8 +663,10 @@ for (i in 2:5) {
   
 }
 
+sink(file = "Latex/MZ_models.txt")
 stargazer(MZ_models[[1]], MZ_models[[2]], MZ_models[[3]], MZ_models[[4]], covariate.labels = c("Beta","Alpha"), dep.var.labels	= c("Squared Log Returns"),
           column.labels = c("G(1,1)", "G(1,2)","E-G(1,2)","HAR"), object.names = F, omit.stat = c("ser","f","adj.rsq"))
+sink(file = NULL)
 
 #DMW Test
 dmwtest_results <- data.frame(matrix(ncol=3, nrow=2))
@@ -677,21 +674,9 @@ dmwtest_results <- data.frame(matrix(ncol=3, nrow=2))
 #create the squared returns
 proxy <- xtrackers_msci$log_returns[1369:1953]^2
 
-max(proxy)
-min(proxy)
-
 resid_garch12 <- c(forecasts_garch[[2]]@forecast$sigmaFor)^2 - proxy
 resid_tgarch12 <- c(forecasts_garch[[10]]@forecast$sigmaFor)^2 - proxy
 resid_har <- c((forecasts_har-1)*100)^2 - proxy
-
-
-max(resid_garch12)
-max(resid_tgarch12)
-max(resid_har)
-
-min(resid_garch12)
-min(resid_tgarch12)
-min(resid_har)
 
 d <- dm.test(resid_garch12,resid_tgarch12, alternative = c("two.sided"), h = 1, power = 2)
 
@@ -711,7 +696,9 @@ dmwtest_results[2,3] <- d$p.value
 rownames(dmwtest_results) <- c("DMW statistic", "p value")
 colnames(dmwtest_results) <- c("G(1,2) vs T-G(1,2)", "G(1,2) vs HAR", "T-G(1,2) vs HAR")
 
+sink(file = "Latex/dmw_test.txt")
 stargazer(round(dmwtest_results,4), summary = F, column.sep.width	= "1pt",
           type = "latex", title = "Performance Statistics of all models versus the HAR estimate",
           font.size = "normalsize")
+sink(file = NULL)
 

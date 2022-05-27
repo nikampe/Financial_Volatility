@@ -540,13 +540,13 @@ forecasts_har_true_values_plot <- data.frame(x = xtrackers_msci$Date[1369:1953],
 #produce one plot of the forecasted RV against the true values
 pdf("Figures/har_forecast.pdf")
 ggplot(forecasts_har_true_values_plot, aes(x,y,z, color = variable)) +
-  geom_line(aes(y = z,  color =c("True values"))) +
+  geom_line(aes(y = z,  color =c("Absolute Log Returns"))) +
   geom_line(aes(y = y, color ="Forecast")) +
-  ggtitle("HAR forecast vs. true Sigma") +
+  ggtitle("HAR forecast vs. absolute log returns") +
   ylab("Sigma") +
   xlab("Time") +
   labs(color="Legend") +
-  scale_color_manual(values = c("red", "grey"))
+  scale_color_manual(values = c("grey", "blue"))
 dev.off()
 
 
@@ -561,13 +561,13 @@ for (i in 1:length(forecasts_garch)) {
   
   pdf(paste("Figures/garch_forecast_",i,".pdf", sep=""))
   print(ggplot(forecasts_garch_true_values_plot, aes(x,y,z, color = variable)) +
-          geom_line(aes(y = z,  color =c("True values"))) +
+          geom_line(aes(y = z,  color =c("Absolute log returns"))) +
           geom_line(aes(y = y, color ="Forecast")) +
-          ggtitle(paste("GARCH Model", i, "forecast vs. true Sigma")) +
+          ggtitle(paste("GARCH Model", i, "forecast vs. absolute log returns")) +
           ylab("Sigma") +
           xlab("Time") +
           labs(color="Legend") +
-          scale_color_manual(values = c("red", "grey")))
+          scale_color_manual(values = c("grey", "red")))
   dev.off()
 }
 
@@ -665,11 +665,11 @@ for (i in 2:5) {
 
 sink(file = "Latex/MZ_models.txt")
 stargazer(MZ_models[[1]], MZ_models[[2]], MZ_models[[3]], MZ_models[[4]], covariate.labels = c("Beta","Alpha"), dep.var.labels	= c("Squared Log Returns"),
-          column.labels = c("G(1,1)", "G(1,2)","E-G(1,2)","HAR"), object.names = F, omit.stat = c("ser","f","adj.rsq"))
+          column.labels = c("G(1,1)", "G(1,2)","T-G(1,2)","HAR"), object.names = F, omit.stat = c("ser","f","adj.rsq"))
 sink(file = NULL)
 
 #DMW Test
-dmwtest_results <- data.frame(matrix(ncol=3, nrow=2))
+dmwtest_results <- data.frame(matrix(ncol=1, nrow=2))
 
 #create the squared returns
 proxy <- xtrackers_msci$log_returns[1369:1953]^2
@@ -682,23 +682,12 @@ d <- dm.test(resid_garch12,resid_tgarch12, alternative = c("two.sided"), h = 1, 
 
 dmwtest_results[1,1] <- d$statistic
 dmwtest_results[2,1] <- d$p.value
-
-d <- dm.test(resid_garch12, resid_har, alternative = c("two.sided"), h = 1, power = 2)
-
-dmwtest_results[1,2] <- d$statistic
-dmwtest_results[2,2] <- d$p.value
-
-d <- dm.test(resid_tgarch12, resid_har, alternative = c("two.sided"), h = 1, power = 2)
-
-dmwtest_results[1,3] <- d$statistic
-dmwtest_results[2,3] <- d$p.value
-
+x
 rownames(dmwtest_results) <- c("DMW statistic", "p value")
-colnames(dmwtest_results) <- c("G(1,2) vs T-G(1,2)", "G(1,2) vs HAR", "T-G(1,2) vs HAR")
+colnames(dmwtest_results) <- c("G(1,2) vs T-G(1,2)")
 
 sink(file = "Latex/dmw_test.txt")
 stargazer(round(dmwtest_results,4), summary = F, column.sep.width	= "1pt",
           type = "latex", title = "Performance Statistics of all models versus the HAR estimate",
           font.size = "normalsize")
 sink(file = NULL)
-
